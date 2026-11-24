@@ -5,7 +5,8 @@ import {
   ShieldCheck, Eye, Footprints, ExternalLink, Sparkles,
   Mail, MapPin, RefreshCw, CheckCircle2, ArrowUpRight,
   Radio, Layers, ThermometerSnowflake, AlertCircle, RotateCcw,
-  Clock, Star, Info, Ban, Lock, ChevronLeft, Users, Tv, Car
+  Clock, Star, Info, Ban, Lock, ChevronLeft, Users, Tv, Car,
+  Sun, Moon
 } from 'lucide-react';
 
 // ============================================================================
@@ -32,7 +33,8 @@ const WAZE_CATEGORIES = [
     title: 'Ice & Sheet',
     subtitle: 'Cut quality, Zamboni, sheet swaps',
     icon: Snowflake,
-    accent: 'text-cyan-300 border-cyan-400/25 bg-cyan-400/10',
+    accentDark: 'text-cyan-300 border-cyan-400/25 bg-cyan-400/10',
+    accentLight: 'text-cyan-700 border-cyan-500/30 bg-cyan-50',
     options: [
       { id: 'ice_rutted', label: 'Rutted / Slushy / Wet Ice', impact: -3, type: 'issue', ttlHours: 48 },
       { id: 'ice_zamboni', label: 'Zamboni / Ice Cut Delayed', impact: -2, type: 'issue', ttlHours: 4 },
@@ -45,7 +47,8 @@ const WAZE_CATEGORIES = [
     title: 'Temp & Viewing',
     subtitle: 'Heaters, foggy glass, seating',
     icon: ThermometerSnowflake,
-    accent: 'text-sky-300 border-sky-400/25 bg-sky-400/10',
+    accentDark: 'text-sky-300 border-sky-400/25 bg-sky-400/10',
+    accentLight: 'text-sky-700 border-sky-500/30 bg-sky-50',
     options: [
       { id: 'temp_freezing', label: 'Arena Freezing / Heaters Off', impact: -3, type: 'issue', ttlHours: 48 },
       { id: 'temp_glass', label: 'Foggy / Scratched Viewing Glass', impact: -2, type: 'issue', ttlHours: 48 },
@@ -58,7 +61,8 @@ const WAZE_CATEGORIES = [
     title: 'Restrooms & Rooms',
     subtitle: 'Outages, locker room heat/cleanliness',
     icon: Users,
-    accent: 'text-violet-300 border-violet-400/25 bg-violet-400/10',
+    accentDark: 'text-violet-300 border-violet-400/25 bg-violet-400/10',
+    accentLight: 'text-violet-700 border-violet-500/30 bg-violet-50',
     options: [
       { id: 'rr_out', label: 'Restroom Out of Order / Flooded', impact: -4, type: 'issue', ttlHours: 48 },
       { id: 'rr_locker', label: 'Locker Room Dirty / No Heat', impact: -3, type: 'issue', ttlHours: 48 },
@@ -70,7 +74,8 @@ const WAZE_CATEGORIES = [
     title: 'Pro Shop & Gear',
     subtitle: 'Sharpening, tape/laces, vending',
     icon: ShoppingBag,
-    accent: 'text-emerald-300 border-emerald-400/25 bg-emerald-400/10',
+    accentDark: 'text-emerald-300 border-emerald-400/25 bg-emerald-400/10',
+    accentLight: 'text-emerald-700 border-emerald-500/30 bg-emerald-50',
     showPostedHoursNote: true,
     options: [
       { id: 'shop_no_sharp', label: 'No Skate Sharpening (Tape & Laces OK)', impact: -2, type: 'issue', ttlHours: 48 },
@@ -86,7 +91,8 @@ const WAZE_CATEGORIES = [
     title: 'Stream & Clock',
     subtitle: 'LiveBarn, Black Bear, scoreboard',
     icon: Tv,
-    accent: 'text-amber-300 border-amber-400/25 bg-amber-400/10',
+    accentDark: 'text-amber-300 border-amber-400/25 bg-amber-400/10',
+    accentLight: 'text-amber-700 border-amber-500/30 bg-amber-50',
     options: [
       { id: 'stream_offline', label: 'LiveBarn / Stream Offline', impact: -3, type: 'issue', ttlHours: 48 },
       { id: 'stream_clock', label: 'Scoreboard / Horn Malfunction', impact: -2, type: 'issue', ttlHours: 48 },
@@ -98,7 +104,8 @@ const WAZE_CATEGORIES = [
     title: 'Parking, Food & Ops',
     subtitle: 'Lots, delays, snack bar, bar/gym',
     icon: Car,
-    accent: 'text-rose-300 border-rose-400/25 bg-rose-400/10',
+    accentDark: 'text-rose-300 border-rose-400/25 bg-rose-400/10',
+    accentLight: 'text-rose-700 border-rose-500/30 bg-rose-50',
     options: [
       { id: 'ops_parking', label: 'Parking Lot Gridlock / Full', impact: -2, type: 'issue', ttlHours: 4 },
       { id: 'ops_behind', label: 'Games Running 30+ Min Behind', impact: -2, type: 'issue', ttlHours: 4 },
@@ -115,6 +122,7 @@ const WAZE_CATEGORIES = [
 const COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 hours per rink + option
 const COOLDOWN_STORAGE_KEY = 'mrr_waze_cooldowns_v2';
 const WATCHED_STORAGE_KEY = 'mrr_watched_rinks_v1';
+const THEME_STORAGE_KEY = 'mrr_theme_mode_v1';
 
 // Encode & decode metadata inside `rink_alerts.message` so zero DB migrations are needed
 function encodeAlertMessage(cleanLabel, ttlTag, confirmations = 1) {
@@ -161,6 +169,27 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [busyAction, setBusyAction] = useState(false);
+
+  // Per-device Theme Mode (defaults to 'dark' Obsidian Mode)
+  const [isLight, setIsLight] = useState(() => {
+    try {
+      return localStorage.getItem(THEME_STORAGE_KEY) === 'light';
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, isLight ? 'light' : 'dark');
+    } catch {
+      // ignore storage errors
+    }
+    const bgHex = isLight ? '#F3F5F8' : '#0B0C0E';
+    document.body.style.backgroundColor = bgHex;
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if (metaTheme) metaTheme.setAttribute('content', bgHex);
+  }, [isLight]);
 
   // Local device state: Cooldowns & Watched Weekend Rinks
   const [cooldowns, setCooldowns] = useState(() => {
@@ -287,7 +316,6 @@ export default function App() {
 
       let workingRinks = rinksData || [];
 
-      // Silently expire stale alerts and restore their temporary score impact
       if (expiredAlerts.length > 0) {
         const expiredIds = expiredAlerts.map((a) => a.id);
         await supabase
@@ -382,7 +410,6 @@ export default function App() {
       return;
     }
 
-    // Check if this exact issue is ALREADY active at this rink (Single-Deduction Lock!)
     const existingActive = alerts.find((al) => {
       if (al.rink_id !== rink.id) return false;
       const meta = parseAlertMeta(al);
@@ -392,7 +419,6 @@ export default function App() {
     setBusyAction(true);
     try {
       if (existingActive) {
-        // Already active -> Increment confirmation count with ZERO extra point deduction!
         const meta = parseAlertMeta(existingActive);
         const nextCount = meta.confirmations + 1;
         const updatedMsg = encodeAlertMessage(meta.cleanLabel, meta.ttlTag, nextCount);
@@ -410,7 +436,6 @@ export default function App() {
         return;
       }
 
-      // Brand-new report -> Insert active alert & apply single score impact
       const isPerm = option.type === 'permanent';
       const ttlTag = isPerm ? 'PERM' : `${option.ttlHours || 48}h`;
       const dbCategory = isPerm ? 'Permanent Closure' : categoryObj.id;
@@ -457,7 +482,6 @@ export default function App() {
     }
   };
 
-  // Increment "Still Active" confirmation directly from an Active Alert card
   const handleConfirmStillActive = async (rink, alertItem) => {
     if (busyAction) return;
     const meta = parseAlertMeta(alertItem);
@@ -488,7 +512,6 @@ export default function App() {
     }
   };
 
-  // Resolve Alert (Parent or Verified Rink Staff PIN) and restore deducted points
   const handleResolveAlert = async (rink, alertItem, byStaff = false) => {
     if (busyAction) return;
     setBusyAction(true);
@@ -539,7 +562,6 @@ export default function App() {
     const meta = parseAlertMeta(alertItem);
     const labelLower = meta.cleanLabel.toLowerCase();
 
-    // Determine exact v3.1 permanent baseline adjustment & column updates
     let permDelta = -3;
     const rinkUpdates = { updated_at: new Date().toISOString() };
 
@@ -563,7 +585,6 @@ export default function App() {
       rinkUpdates.off_ice_training = 'None (Closed)';
     }
 
-    // Remove the temporary -3 hold first, then apply the permanent baseline deduction
     const holdReversed = targetRink.live_score - (alertItem.score_impact || 0);
     const newBaseline = Math.max(0, Math.min(100, targetRink.baseline_score + permDelta));
     const newLive = Math.max(0, Math.min(100, holdReversed + permDelta));
@@ -639,6 +660,35 @@ export default function App() {
   };
 
   const getScoreTheme = (score) => {
+    if (isLight) {
+      if (score >= 85) {
+        return {
+          badge: 'bg-gradient-to-b from-emerald-50 to-emerald-100/80 text-emerald-800 border-emerald-300 shadow-sm',
+          rank: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+          glow: 'group-hover:border-emerald-400',
+        };
+      }
+      if (score >= 70) {
+        return {
+          badge: 'bg-gradient-to-b from-cyan-50 to-sky-100/80 text-sky-900 border-sky-300 shadow-sm',
+          rank: 'bg-sky-50 text-sky-700 border-sky-200',
+          glow: 'group-hover:border-sky-400',
+        };
+      }
+      if (score >= 60) {
+        return {
+          badge: 'bg-gradient-to-b from-amber-50 to-amber-100/80 text-amber-900 border-amber-300 shadow-sm',
+          rank: 'bg-amber-50 text-amber-700 border-amber-200',
+          glow: 'group-hover:border-amber-400',
+        };
+      }
+      return {
+        badge: 'bg-gradient-to-b from-rose-50 to-rose-100/80 text-rose-900 border-rose-300 shadow-sm',
+        rank: 'bg-rose-50 text-rose-700 border-rose-200',
+        glow: 'group-hover:border-rose-400',
+      };
+    }
+
     if (score >= 85) {
       return {
         badge:
@@ -674,9 +724,10 @@ export default function App() {
   const getContextualGear = (rink) => {
     const items = [];
     const rinkAlerts = alerts.filter((a) => a.rink_id === rink.id);
-    const hasShopIssue = rinkAlerts.some((a) =>
-      parseAlertMeta(a).cleanLabel.toLowerCase().includes('pro shop') ||
-      parseAlertMeta(a).cleanLabel.toLowerCase().includes('sharpening')
+    const hasShopIssue = rinkAlerts.some(
+      (a) =>
+        parseAlertMeta(a).cleanLabel.toLowerCase().includes('pro shop') ||
+        parseAlertMeta(a).cleanLabel.toLowerCase().includes('sharpening')
     );
 
     if (rink.cold_penalty < 0) {
@@ -753,64 +804,141 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0B0C0E] text-zinc-100 flex flex-col relative overflow-x-hidden">
+    <div
+      className={`min-h-screen flex flex-col relative overflow-x-hidden transition-colors duration-200 ${
+        isLight ? 'bg-[#F3F5F8] text-slate-900' : 'bg-[#0B0C0E] text-zinc-100'
+      }`}
+    >
       {/* 2026 Ambient Spatial Mesh Lighting */}
       <div
         aria-hidden="true"
-        className="pointer-events-none fixed inset-x-0 top-0 h-[420px] bg-[radial-gradient(ellipse_75%_55%_at_50%_-15%,rgba(34,211,238,0.13),rgba(99,102,241,0.04)_45%,rgba(11,12,14,0)_80%)]"
+        className={`pointer-events-none fixed inset-x-0 top-0 h-[420px] ${
+          isLight
+            ? 'bg-[radial-gradient(ellipse_75%_55%_at_50%_-15%,rgba(14,165,233,0.14),rgba(99,102,241,0.04)_45%,rgba(243,245,248,0)_80%)]'
+            : 'bg-[radial-gradient(ellipse_75%_55%_at_50%_-15%,rgba(34,211,238,0.13),rgba(99,102,241,0.04)_45%,rgba(11,12,14,0)_80%)]'
+        }`}
       />
 
       {/* Floating Expressive Toast */}
       {toastMsg && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#1E2127]/95 backdrop-blur-xl border border-emerald-400/40 shadow-[0_16px_40px_rgba(0,0,0,0.85),inset_0_1px_0_0_rgba(255,255,255,0.15)] text-white px-5 py-3 rounded-full text-sm font-semibold flex items-center gap-2.5 max-w-[92vw]">
+        <div
+          className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 backdrop-blur-xl px-5 py-3 rounded-full text-sm font-semibold flex items-center gap-2.5 max-w-[92vw] border ${
+            isLight
+              ? 'bg-slate-900/95 border-emerald-400/40 text-white shadow-xl'
+              : 'bg-[#1E2127]/95 border-emerald-400/40 shadow-[0_16px_40px_rgba(0,0,0,0.85),inset_0_1px_0_0_rgba(255,255,255,0.15)] text-white'
+          }`}
+        >
           <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
           <span>{toastMsg}</span>
         </div>
       )}
 
       {/* 2026 Floating Frosted Top App Bar */}
-      <header className="sticky top-0 z-30 bg-[#0B0C0E]/80 backdrop-blur-2xl border-b border-white/[0.07]">
-        <div className="max-w-4xl mx-auto px-4 py-3.5 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-300 via-cyan-400 to-sky-500 flex items-center justify-center text-zinc-950 font-extrabold text-base shadow-[0_8px_24px_rgba(34,211,238,0.35),inset_0_1px_0_0_rgba(255,255,255,0.65)]">
+      <header
+        className={`sticky top-0 z-30 backdrop-blur-2xl border-b transition-colors ${
+          isLight
+            ? 'bg-[#F3F5F8]/85 border-slate-200/80'
+            : 'bg-[#0B0C0E]/80 border-white/[0.07]'
+        }`}
+      >
+        <div className="max-w-4xl mx-auto px-4 py-3.5 flex items-center justify-between gap-2.5">
+          <div className="flex items-center gap-3 min-w-0">
+            <div
+              className={`w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-300 via-cyan-400 to-sky-500 flex items-center justify-center text-zinc-950 font-extrabold text-base shrink-0 ${
+                isLight
+                  ? 'shadow-[0_6px_16px_rgba(14,165,233,0.28)]'
+                  : 'shadow-[0_8px_24px_rgba(34,211,238,0.35),inset_0_1px_0_0_rgba(255,255,255,0.65)]'
+              }`}
+            >
               MR
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h1 className="font-extrabold text-lg tracking-tight text-white">
+                <h1
+                  className={`font-extrabold text-base sm:text-lg tracking-tight truncate ${
+                    isLight ? 'text-slate-950' : 'text-white'
+                  }`}
+                >
                   MyRinkRankings
                 </h1>
-                <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-cyan-400/12 text-cyan-300 border border-cyan-400/25">
-                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                <span
+                  className={`inline-flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full border shrink-0 ${
+                    isLight
+                      ? 'bg-sky-500/10 text-sky-700 border-sky-500/25'
+                      : 'bg-cyan-400/12 text-cyan-300 border-cyan-400/25'
+                  }`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full animate-pulse ${
+                      isLight ? 'bg-sky-600' : 'bg-cyan-400'
+                    }`}
+                  />
                   Live
                 </span>
               </div>
-              <p className="text-xs text-zinc-400 font-medium">
+              <p
+                className={`text-xs font-medium truncate ${
+                  isLight ? 'text-slate-500' : 'text-zinc-400'
+                }`}
+              >
                 100-pt rink telemetry by travel hockey parents
               </p>
             </div>
           </div>
 
-          <button
-            onClick={() => setShowAddRink(true)}
-            className="flex items-center gap-1.5 bg-gradient-to-b from-cyan-300 to-cyan-400 hover:from-cyan-200 hover:to-cyan-300 active:scale-95 text-zinc-950 font-extrabold text-xs px-4 py-2.5 rounded-full shadow-[0_6px_20px_rgba(34,211,238,0.32),inset_0_1px_0_0_rgba(255,255,255,0.6)] transition-all"
-          >
-            <Plus className="w-4 h-4 stroke-[2.5]" />
-            <span>Add Rink</span>
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {/* 1-Tap Light / Dark Mode Toggle */}
+            <button
+              onClick={() => setIsLight((prev) => !prev)}
+              aria-label={isLight ? 'Switch to Obsidian Dark Mode' : 'Switch to Glacial Light Mode'}
+              title={isLight ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+              className={`p-2.5 rounded-full border transition-all active:scale-95 ${
+                isLight
+                  ? 'bg-white hover:bg-slate-100 border-slate-200 text-slate-700 shadow-sm'
+                  : 'bg-[#181B20] hover:bg-[#22262E] border-white/[0.09] text-amber-300 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]'
+              }`}
+            >
+              {isLight ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+            </button>
+
+            <button
+              onClick={() => setShowAddRink(true)}
+              className={`flex items-center gap-1.5 font-extrabold text-xs px-4 py-2.5 rounded-full transition-all active:scale-95 ${
+                isLight
+                  ? 'bg-slate-950 hover:bg-slate-800 text-white shadow-md'
+                  : 'bg-gradient-to-b from-cyan-300 to-cyan-400 hover:from-cyan-200 hover:to-cyan-300 text-zinc-950 shadow-[0_6px_20px_rgba(34,211,238,0.32),inset_0_1px_0_0_rgba(255,255,255,0.6)]'
+              }`}
+            >
+              <Plus className="w-4 h-4 stroke-[2.5]" />
+              <span>Add Rink</span>
+            </button>
+          </div>
         </div>
       </header>
 
       {/* Main Content */}
       <main className="relative z-10 flex-1 max-w-4xl w-full mx-auto px-4 py-5 space-y-5">
-        {/* ⭐ My Weekend Rinks Watchlist Strip (Shows whenever 1+ rinks are starred) */}
+        {/* ⭐ My Weekend Rinks Watchlist Strip */}
         {watchedRinksList.length > 0 && (
-          <div className="bg-gradient-to-b from-[#1E1D17] to-[#141412] border border-amber-400/30 shadow-[0_12px_30px_-10px_rgba(0,0,0,0.85),inset_0_1px_0_0_rgba(251,191,36,0.22)] rounded-[26px] p-4 space-y-2.5">
+          <div
+            className={`rounded-[26px] p-4 space-y-2.5 border ${
+              isLight
+                ? 'bg-gradient-to-b from-amber-50 to-white border-amber-300/80 shadow-sm'
+                : 'bg-gradient-to-b from-[#1E1D17] to-[#141412] border-amber-400/30 shadow-[0_12px_30px_-10px_rgba(0,0,0,0.85),inset_0_1px_0_0_rgba(251,191,36,0.22)]'
+            }`}
+          >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
-                <Star className="w-4 h-4 fill-amber-400 text-amber-400" /> My Weekend Rinks ({watchedRinksList.length})
+              <span
+                className={`text-xs font-extrabold uppercase tracking-wider flex items-center gap-1.5 ${
+                  isLight ? 'text-amber-800' : 'text-amber-300'
+                }`}
+              >
+                <Star className="w-4 h-4 fill-amber-400 text-amber-400" /> My Weekend Rinks (
+                {watchedRinksList.length})
               </span>
-              <span className="text-[11px] text-zinc-400">48h practice-to-game intel</span>
+              <span className={`text-[11px] ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
+                48h practice-to-game intel
+              </span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {watchedRinksList.map((wr) => {
@@ -819,18 +947,38 @@ export default function App() {
                   <div
                     key={wr.id}
                     onClick={() => openRinkSheet(wr)}
-                    className="flex items-center justify-between gap-2 bg-[#0E0F12]/90 hover:bg-[#181A20] border border-white/[0.08] rounded-2xl px-3.5 py-2.5 cursor-pointer transition"
+                    className={`flex items-center justify-between gap-2 rounded-2xl px-3.5 py-2.5 cursor-pointer transition border ${
+                      isLight
+                        ? 'bg-white hover:bg-amber-50/60 border-amber-200/80'
+                        : 'bg-[#0E0F12]/90 hover:bg-[#181A20] border-white/[0.08]'
+                    }`}
                   >
                     <div className="min-w-0">
-                      <p className="text-xs font-extrabold text-white truncate">{wr.name}</p>
-                      <p className="text-[11px] text-zinc-400 truncate mt-0.5">
+                      <p
+                        className={`text-xs font-extrabold truncate ${
+                          isLight ? 'text-slate-900' : 'text-white'
+                        }`}
+                      >
+                        {wr.name}
+                      </p>
+                      <p
+                        className={`text-[11px] truncate mt-0.5 ${
+                          isLight ? 'text-slate-500' : 'text-zinc-400'
+                        }`}
+                      >
                         {wrAlerts.length > 0
-                          ? `🔥 ${wrAlerts.length} active update${wrAlerts.length > 1 ? 's' : ''} (${parseAlertMeta(wrAlerts[0]).cleanLabel})`
+                          ? `🔥 ${wrAlerts.length} active update${
+                              wrAlerts.length > 1 ? 's' : ''
+                            } (${parseAlertMeta(wrAlerts[0]).cleanLabel})`
                           : '✓ No active alerts in last 48h'}
                       </p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className="font-mono-score text-sm font-extrabold text-cyan-300">
+                      <span
+                        className={`font-mono-score text-sm font-extrabold ${
+                          isLight ? 'text-sky-700' : 'text-cyan-300'
+                        }`}
+                      >
                         {wr.live_score}
                       </span>
                       <button
@@ -850,40 +998,96 @@ export default function App() {
 
         {/* 2026 Bento Telemetry Header Strip */}
         <div className="grid grid-cols-3 gap-2.5">
-          <div className="bg-gradient-to-b from-[#191C21] to-[#131519] border border-white/[0.07] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.09)] rounded-[22px] p-3.5">
-            <div className="text-[11px] font-bold text-zinc-400 flex items-center gap-1.5">
-              <Layers className="w-3.5 h-3.5 text-cyan-400" />
+          <div
+            className={`rounded-[22px] p-3.5 border ${
+              isLight
+                ? 'bg-white border-slate-200/90 shadow-sm'
+                : 'bg-gradient-to-b from-[#191C21] to-[#131519] border-white/[0.07] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.09)]'
+            }`}
+          >
+            <div
+              className={`text-[11px] font-bold flex items-center gap-1.5 ${
+                isLight ? 'text-slate-500' : 'text-zinc-400'
+              }`}
+            >
+              <Layers className={`w-3.5 h-3.5 ${isLight ? 'text-sky-600' : 'text-cyan-400'}`} />
               <span>Rinks Ranked</span>
             </div>
-            <div className="font-mono-score text-xl sm:text-2xl font-extrabold text-white mt-1">
+            <div
+              className={`font-mono-score text-xl sm:text-2xl font-extrabold mt-1 ${
+                isLight ? 'text-slate-950' : 'text-white'
+              }`}
+            >
               {rinks.length}
-              <span className="text-xs font-sans font-semibold text-zinc-500 ml-1.5">
+              <span
+                className={`text-xs font-sans font-semibold ml-1.5 ${
+                  isLight ? 'text-slate-400' : 'text-zinc-500'
+                }`}
+              >
                 ({totalSheets} sheets)
               </span>
             </div>
           </div>
 
-          <div className="bg-gradient-to-b from-[#191C21] to-[#131519] border border-white/[0.07] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.09)] rounded-[22px] p-3.5">
-            <div className="text-[11px] font-bold text-zinc-400 flex items-center gap-1.5">
-              <Radio className="w-3.5 h-3.5 text-amber-400" />
+          <div
+            className={`rounded-[22px] p-3.5 border ${
+              isLight
+                ? 'bg-white border-slate-200/90 shadow-sm'
+                : 'bg-gradient-to-b from-[#191C21] to-[#131519] border-white/[0.07] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.09)]'
+            }`}
+          >
+            <div
+              className={`text-[11px] font-bold flex items-center gap-1.5 ${
+                isLight ? 'text-slate-500' : 'text-zinc-400'
+              }`}
+            >
+              <Radio className="w-3.5 h-3.5 text-amber-500" />
               <span>Live Pulses</span>
             </div>
-            <div className="font-mono-score text-xl sm:text-2xl font-extrabold text-white mt-1">
+            <div
+              className={`font-mono-score text-xl sm:text-2xl font-extrabold mt-1 ${
+                isLight ? 'text-slate-950' : 'text-white'
+              }`}
+            >
               {alerts.length}
-              <span className="text-xs font-sans font-semibold text-zinc-500 ml-1.5">
+              <span
+                className={`text-xs font-sans font-semibold ml-1.5 ${
+                  isLight ? 'text-slate-400' : 'text-zinc-500'
+                }`}
+              >
                 active
               </span>
             </div>
           </div>
 
-          <div className="bg-gradient-to-b from-[#191C21] to-[#131519] border border-white/[0.07] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.09)] rounded-[22px] p-3.5">
-            <div className="text-[11px] font-bold text-zinc-400 flex items-center gap-1.5">
-              <ThermometerSnowflake className="w-3.5 h-3.5 text-sky-400" />
+          <div
+            className={`rounded-[22px] p-3.5 border ${
+              isLight
+                ? 'bg-white border-slate-200/90 shadow-sm'
+                : 'bg-gradient-to-b from-[#191C21] to-[#131519] border-white/[0.07] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.09)]'
+            }`}
+          >
+            <div
+              className={`text-[11px] font-bold flex items-center gap-1.5 ${
+                isLight ? 'text-slate-500' : 'text-zinc-400'
+              }`}
+            >
+              <ThermometerSnowflake
+                className={`w-3.5 h-3.5 ${isLight ? 'text-sky-600' : 'text-sky-400'}`}
+              />
               <span>Icebox Alerts</span>
             </div>
-            <div className="font-mono-score text-xl sm:text-2xl font-extrabold text-white mt-1">
+            <div
+              className={`font-mono-score text-xl sm:text-2xl font-extrabold mt-1 ${
+                isLight ? 'text-slate-950' : 'text-white'
+              }`}
+            >
               {rinks.filter((r) => r.cold_penalty < 0).length}
-              <span className="text-xs font-sans font-semibold text-zinc-500 ml-1.5">
+              <span
+                className={`text-xs font-sans font-semibold ml-1.5 ${
+                  isLight ? 'text-slate-400' : 'text-zinc-500'
+                }`}
+              >
                 rinks
               </span>
             </div>
@@ -892,11 +1096,25 @@ export default function App() {
 
         {/* Live Rink Pulse Ticker */}
         {alerts.length > 0 && (
-          <div className="bg-gradient-to-r from-[#1A1C20] via-[#211E1B] to-[#1A1C20] border border-amber-400/25 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.8),inset_0_1px_0_0_rgba(251,191,36,0.2)] rounded-full px-4 py-2.5 flex items-center gap-3 overflow-x-auto no-scrollbar">
-            <span className="shrink-0 inline-flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wider text-amber-300 bg-amber-400/15 px-3 py-1 rounded-full">
+          <div
+            className={`rounded-full px-4 py-2.5 flex items-center gap-3 overflow-x-auto no-scrollbar border ${
+              isLight
+                ? 'bg-gradient-to-r from-amber-50 via-white to-amber-50 border-amber-300/80 shadow-sm'
+                : 'bg-gradient-to-r from-[#1A1C20] via-[#211E1B] to-[#1A1C20] border-amber-400/25 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.8),inset_0_1px_0_0_rgba(251,191,36,0.2)]'
+            }`}
+          >
+            <span
+              className={`shrink-0 inline-flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wider px-3 py-1 rounded-full ${
+                isLight ? 'text-amber-800 bg-amber-200/60' : 'text-amber-300 bg-amber-400/15'
+              }`}
+            >
               <Flame className="w-3.5 h-3.5" /> Live Pulse
             </span>
-            <div className="flex items-center gap-5 text-xs text-zinc-300 whitespace-nowrap">
+            <div
+              className={`flex items-center gap-5 text-xs whitespace-nowrap ${
+                isLight ? 'text-slate-700' : 'text-zinc-300'
+              }`}
+            >
               {alerts.slice(0, 6).map((al) => {
                 const target = rinks.find((r) => r.id === al.rink_id);
                 const meta = parseAlertMeta(al);
@@ -904,18 +1122,32 @@ export default function App() {
                   <button
                     key={al.id}
                     onClick={() => target && openRinkSheet(target)}
-                    className="inline-flex items-center gap-1.5 hover:text-white transition"
+                    className={`inline-flex items-center gap-1.5 transition ${
+                      isLight ? 'hover:text-slate-950' : 'hover:text-white'
+                    }`}
                   >
-                    <strong className="text-white font-bold underline decoration-white/25">
+                    <strong
+                      className={`font-bold underline ${
+                        isLight
+                          ? 'text-slate-950 decoration-slate-300'
+                          : 'text-white decoration-white/25'
+                      }`}
+                    >
                       {target ? target.name : 'Rink'}:
                     </strong>
                     <span>{meta.cleanLabel}</span>
                     <span
                       className={`font-mono-score font-extrabold ${
                         al.score_impact < 0
-                          ? 'text-rose-400'
+                          ? isLight
+                            ? 'text-rose-600'
+                            : 'text-rose-400'
                           : al.score_impact > 0
-                          ? 'text-emerald-400'
+                          ? isLight
+                            ? 'text-emerald-600'
+                            : 'text-emerald-400'
+                          : isLight
+                          ? 'text-sky-700'
                           : 'text-sky-300'
                       }`}
                     >
@@ -931,26 +1163,46 @@ export default function App() {
         {/* Search & Expressive Pill Controls */}
         <div className="space-y-3">
           <div className="relative group">
-            <Search className="w-4 h-4 text-zinc-400 group-focus-within:text-cyan-400 transition-colors absolute left-4 top-1/2 -translate-y-1/2" />
+            <Search
+              className={`w-4 h-4 transition-colors absolute left-4 top-1/2 -translate-y-1/2 ${
+                isLight
+                  ? 'text-slate-400 group-focus-within:text-sky-600'
+                  : 'text-zinc-400 group-focus-within:text-cyan-400'
+              }`}
+            />
             <input
               type="text"
               placeholder="Search rink name, town, or state..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-[#15171B] focus:bg-[#1B1E24] border border-white/[0.08] focus:border-cyan-400/50 shadow-[inset_0_2px_6px_rgba(0,0,0,0.5)] rounded-full pl-11 pr-5 py-3 text-sm text-white placeholder-zinc-500 focus:outline-none transition-all"
+              className={`w-full rounded-full pl-11 pr-5 py-3 text-sm focus:outline-none transition-all border ${
+                isLight
+                  ? 'bg-white border-slate-200/90 focus:border-sky-500 text-slate-900 placeholder-slate-400 shadow-sm'
+                  : 'bg-[#15171B] focus:bg-[#1B1E24] border-white/[0.08] focus:border-cyan-400/50 shadow-[inset_0_2px_6px_rgba(0,0,0,0.5)] text-white placeholder-zinc-500'
+              }`}
             />
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-2.5">
             {/* State Segmented Control */}
-            <div className="inline-flex items-center gap-1 bg-[#14161A] p-1 rounded-full border border-white/[0.07] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]">
+            <div
+              className={`inline-flex items-center gap-1 p-1 rounded-full border ${
+                isLight
+                  ? 'bg-white border-slate-200/90 shadow-sm'
+                  : 'bg-[#14161A] border-white/[0.07] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]'
+              }`}
+            >
               {['ALL', 'NJ', 'NY', 'PA', 'CT'].map((st) => (
                 <button
                   key={st}
                   onClick={() => setStateFilter(st)}
                   className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold transition-all active:scale-95 ${
                     stateFilter === st
-                      ? 'bg-gradient-to-b from-cyan-300 to-cyan-400 text-zinc-950 shadow-[0_4px_12px_rgba(34,211,238,0.3)]'
+                      ? isLight
+                        ? 'bg-slate-950 text-white shadow-sm'
+                        : 'bg-gradient-to-b from-cyan-300 to-cyan-400 text-zinc-950 shadow-[0_4px_12px_rgba(34,211,238,0.3)]'
+                      : isLight
+                      ? 'text-slate-600 hover:text-slate-950'
                       : 'text-zinc-400 hover:text-white'
                   }`}
                 >
@@ -974,7 +1226,11 @@ export default function App() {
                   onClick={() => setQuickFilter(chip.id)}
                   className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all active:scale-95 border ${
                     quickFilter === chip.id
-                      ? 'bg-[#262A32] text-white border-cyan-400/45 shadow-[0_4px_14px_rgba(0,0,0,0.5),inset_0_1px_0_0_rgba(255,255,255,0.12)]'
+                      ? isLight
+                        ? 'bg-sky-600 text-white border-sky-600 shadow-sm'
+                        : 'bg-[#262A32] text-white border-cyan-400/45 shadow-[0_4px_14px_rgba(0,0,0,0.5),inset_0_1px_0_0_rgba(255,255,255,0.12)]'
+                      : isLight
+                      ? 'bg-white text-slate-600 hover:text-slate-950 border-slate-200/90 shadow-sm'
                       : 'bg-[#14161A] text-zinc-400 hover:text-zinc-200 border-white/[0.07]'
                   }`}
                 >
@@ -987,8 +1243,14 @@ export default function App() {
 
         {/* 2026 Elevated Spatial Rink Cards */}
         {loading ? (
-          <div className="py-16 text-center text-zinc-400 flex flex-col items-center gap-3">
-            <RefreshCw className="w-6 h-6 animate-spin text-cyan-400" />
+          <div
+            className={`py-16 text-center flex flex-col items-center gap-3 ${
+              isLight ? 'text-slate-500' : 'text-zinc-400'
+            }`}
+          >
+            <RefreshCw
+              className={`w-6 h-6 animate-spin ${isLight ? 'text-sky-600' : 'text-cyan-400'}`}
+            />
             <p className="text-sm font-medium">Loading live Tri-State rink telemetry...</p>
           </div>
         ) : errorMsg ? (
@@ -1008,20 +1270,30 @@ export default function App() {
                 <div
                   key={rink.id}
                   onClick={() => openRinkSheet(rink)}
-                  className={`group bg-gradient-to-b from-[#1D2026] to-[#15171B] hover:from-[#23272E] hover:to-[#191C21] hover:-translate-y-0.5 active:scale-[0.99] border border-white/[0.07] ${theme.glow} shadow-[0_14px_34px_-12px_rgba(0,0,0,0.85),inset_0_1px_0_0_rgba(255,255,255,0.12)] rounded-[28px] p-4 sm:p-5 cursor-pointer transition-all duration-200`}
+                  className={`group hover:-translate-y-0.5 active:scale-[0.99] rounded-[28px] p-4 sm:p-5 cursor-pointer transition-all duration-200 border ${
+                    isLight
+                      ? `bg-white hover:bg-slate-50/90 border-slate-200/90 ${theme.glow} shadow-[0_8px_24px_-10px_rgba(15,23,42,0.1)]`
+                      : `bg-gradient-to-b from-[#1D2026] to-[#15171B] hover:from-[#23272E] hover:to-[#191C21] border-white/[0.07] ${theme.glow} shadow-[0_14px_34px_-12px_rgba(0,0,0,0.85),inset_0_1px_0_0_rgba(255,255,255,0.12)]`
+                  }`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3.5">
                       {/* Rank Pill */}
                       <div
-                        className={`font-mono-score w-10 h-10 rounded-2xl border flex items-center justify-center font-extrabold text-sm shrink-0 mt-0.5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12)] ${theme.rank}`}
+                        className={`font-mono-score w-10 h-10 rounded-2xl border flex items-center justify-center font-extrabold text-sm shrink-0 mt-0.5 ${theme.rank}`}
                       >
                         #{idx + 1}
                       </div>
 
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="font-extrabold text-base sm:text-lg text-white group-hover:text-cyan-200 transition-colors">
+                          <h2
+                            className={`font-extrabold text-base sm:text-lg transition-colors ${
+                              isLight
+                                ? 'text-slate-950 group-hover:text-sky-700'
+                                : 'text-white group-hover:text-cyan-200'
+                            }`}
+                          >
                             {rink.name}
                           </h2>
                           <button
@@ -1029,30 +1301,64 @@ export default function App() {
                             title={isWatched ? 'Remove from Weekend Rinks' : 'Watch for Weekend'}
                             className={`p-1 rounded-full border transition ${
                               isWatched
-                                ? 'bg-amber-400/15 border-amber-400/35 text-amber-300'
+                                ? isLight
+                                  ? 'bg-amber-100 border-amber-300 text-amber-600'
+                                  : 'bg-amber-400/15 border-amber-400/35 text-amber-300'
+                                : isLight
+                                ? 'bg-slate-100 border-slate-200 text-slate-400 hover:text-amber-500'
                                 : 'bg-white/[0.04] border-white/[0.08] text-zinc-400 hover:text-amber-300'
                             }`}
                           >
-                            <Star className={`w-3.5 h-3.5 ${isWatched ? 'fill-amber-300' : ''}`} />
+                            <Star
+                              className={`w-3.5 h-3.5 ${
+                                isWatched ? 'fill-amber-400 text-amber-400' : ''
+                              }`}
+                            />
                           </button>
                           {rink.is_home_rink && (
-                            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-violet-400/15 text-violet-300 border border-violet-400/30">
+                            <span
+                              className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                                isLight
+                                  ? 'bg-violet-50 text-violet-700 border-violet-200'
+                                  : 'bg-violet-400/15 text-violet-300 border-violet-400/30'
+                              }`}
+                            >
                               🏠 Home Rink
                             </span>
                           )}
                           {hasPermFlag && (
-                            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-400/35 inline-flex items-center gap-1">
+                            <span
+                              className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border inline-flex items-center gap-1 ${
+                                isLight
+                                  ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                  : 'bg-rose-500/20 text-rose-300 border-rose-400/35'
+                              }`}
+                            >
                               <Ban className="w-3 h-3" /> Amenity Closure Flagged
                             </span>
                           )}
                           {rinkAlerts.length > 0 && (
-                            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-400/15 text-amber-300 border border-amber-400/30 inline-flex items-center gap-1">
+                            <span
+                              className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border inline-flex items-center gap-1 ${
+                                isLight
+                                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                  : 'bg-amber-400/15 text-amber-300 border-amber-400/30'
+                              }`}
+                            >
                               <Flame className="w-3 h-3" /> {rinkAlerts.length} Live
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-zinc-400 mt-1 flex items-center gap-1.5 font-medium">
-                          <MapPin className="w-3.5 h-3.5 text-zinc-500" />
+                        <p
+                          className={`text-xs mt-1 flex items-center gap-1.5 font-medium ${
+                            isLight ? 'text-slate-500' : 'text-zinc-400'
+                          }`}
+                        >
+                          <MapPin
+                            className={`w-3.5 h-3.5 ${
+                              isLight ? 'text-slate-400' : 'text-zinc-500'
+                            }`}
+                          />
                           <span>
                             {rink.city}, {rink.state} • {rink.sheets}{' '}
                             {rink.sheets === 1 ? 'Sheet' : 'Sheets'}
@@ -1072,13 +1378,25 @@ export default function App() {
                       {delta !== 0 ? (
                         <div
                           className={`font-mono-score text-[11px] font-extrabold mt-1.5 ${
-                            delta < 0 ? 'text-rose-400' : 'text-emerald-400'
+                            delta < 0
+                              ? isLight
+                                ? 'text-rose-600'
+                                : 'text-rose-400'
+                              : isLight
+                              ? 'text-emerald-600'
+                              : 'text-emerald-400'
                           }`}
                         >
                           {delta > 0 ? `+${delta}` : delta} live pulse
                         </div>
                       ) : (
-                        <div className="text-[11px] text-zinc-400 font-semibold mt-1.5 inline-flex items-center gap-0.5 group-hover:text-cyan-300 transition-colors">
+                        <div
+                          className={`text-[11px] font-semibold mt-1.5 inline-flex items-center gap-0.5 transition-colors ${
+                            isLight
+                              ? 'text-slate-500 group-hover:text-sky-700'
+                              : 'text-zinc-400 group-hover:text-cyan-300'
+                          }`}
+                        >
                           <span>Inspect</span>
                           <ArrowUpRight className="w-3.5 h-3.5" />
                         </div>
@@ -1087,23 +1405,57 @@ export default function App() {
                   </div>
 
                   {/* Tonal Scannable Chips */}
-                  <div className="mt-3.5 pt-3 border-t border-white/[0.06] flex flex-wrap gap-1.5 text-[11px] font-semibold">
-                    <span className="px-3 py-1 rounded-full bg-[#242830] text-zinc-200 border border-white/[0.06]">
+                  <div
+                    className={`mt-3.5 pt-3 border-t flex flex-wrap gap-1.5 text-[11px] font-semibold ${
+                      isLight ? 'border-slate-100' : 'border-white/[0.06]'
+                    }`}
+                  >
+                    <span
+                      className={`px-3 py-1 rounded-full border ${
+                        isLight
+                          ? 'bg-slate-100 text-slate-800 border-slate-200/80'
+                          : 'bg-[#242830] text-zinc-200 border-white/[0.06]'
+                      }`}
+                    >
                       {rink.inside_temp_rating}
                     </span>
-                    <span className="px-3 py-1 rounded-full bg-[#242830] text-zinc-300 border border-white/[0.06]">
+                    <span
+                      className={`px-3 py-1 rounded-full border ${
+                        isLight
+                          ? 'bg-slate-100 text-slate-700 border-slate-200/80'
+                          : 'bg-[#242830] text-zinc-300 border-white/[0.06]'
+                      }`}
+                    >
                       🏒 {rink.pro_shop_status.split('(')[0].trim()}
                     </span>
                     {rink.has_hockey_vending && (
-                      <span className="px-3 py-1 rounded-full bg-emerald-400/15 text-emerald-300 border border-emerald-400/25">
+                      <span
+                        className={`px-3 py-1 rounded-full border ${
+                          isLight
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-emerald-400/15 text-emerald-300 border-emerald-400/25'
+                        }`}
+                      >
                         24/7 Gear Vending
                       </span>
                     )}
-                    <span className="px-3 py-1 rounded-full bg-[#242830] text-zinc-300 border border-white/[0.06]">
+                    <span
+                      className={`px-3 py-1 rounded-full border ${
+                        isLight
+                          ? 'bg-slate-100 text-slate-700 border-slate-200/80'
+                          : 'bg-[#242830] text-zinc-300 border-white/[0.06]'
+                      }`}
+                    >
                       📺 {rink.streaming_provider}
                     </span>
                     {rink.corner_padded_mats && (
-                      <span className="px-3 py-1 rounded-full bg-cyan-400/12 text-cyan-300 border border-cyan-400/20">
+                      <span
+                        className={`px-3 py-1 rounded-full border ${
+                          isLight
+                            ? 'bg-sky-50 text-sky-700 border-sky-200'
+                            : 'bg-cyan-400/12 text-cyan-300 border-cyan-400/20'
+                        }`}
+                      >
                         Corner Mats
                       </span>
                     )}
@@ -1116,20 +1468,30 @@ export default function App() {
       </main>
 
       {/* Footer with Subtle Founder Admin Lock */}
-      <footer className="relative z-10 border-t border-white/[0.06] bg-[#0B0C0E] py-7 px-4 text-center text-xs text-zinc-500 space-y-2.5">
-        <p className="text-zinc-300 font-bold">
+      <footer
+        className={`relative z-10 border-t py-7 px-4 text-center text-xs space-y-2.5 transition-colors ${
+          isLight
+            ? 'border-slate-200/80 bg-[#F3F5F8] text-slate-500'
+            : 'border-white/[0.06] bg-[#0B0C0E] text-zinc-500'
+        }`}
+      >
+        <p className={`font-bold ${isLight ? 'text-slate-800' : 'text-zinc-300'}`}>
           MyRinkRankings — Built by Travel Hockey Parents
         </p>
         <div className="flex flex-wrap justify-center items-center gap-5">
           <a
             href="mailto:myrinkrankings@gmail.com?subject=Rink%20Owner%20or%20Partner%20Inquiry"
-            className="text-cyan-400 hover:text-cyan-300 font-semibold inline-flex items-center gap-1.5"
+            className={`font-semibold inline-flex items-center gap-1.5 ${
+              isLight ? 'text-sky-700 hover:text-sky-600' : 'text-cyan-400 hover:text-cyan-300'
+            }`}
           >
             <Mail className="w-3.5 h-3.5" /> Rink Owner / Partner Contact
           </a>
           <button
             onClick={() => setShowLegalModal(true)}
-            className="text-zinc-400 hover:text-white underline font-medium"
+            className={`underline font-medium ${
+              isLight ? 'text-slate-500 hover:text-slate-900' : 'text-zinc-400 hover:text-white'
+            }`}
           >
             Affiliate Disclosure, Terms & Privacy
           </button>
@@ -1143,7 +1505,9 @@ export default function App() {
                 setShowAdminPinModal(true);
               }
             }}
-            className="text-zinc-600 hover:text-zinc-300 inline-flex items-center gap-1 font-medium transition"
+            className={`inline-flex items-center gap-1 font-medium transition ${
+              isLight ? 'text-slate-400 hover:text-slate-700' : 'text-zinc-600 hover:text-zinc-300'
+            }`}
           >
             <Lock className="w-3 h-3" /> Admin
           </button>
@@ -1156,20 +1520,38 @@ export default function App() {
       {selectedRink && (
         <div
           onClick={() => setSelectedRink(null)}
-          className="fixed inset-0 z-40 bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4"
+          className="fixed inset-0 z-40 bg-black/75 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-gradient-to-b from-[#1E2127] to-[#121418] border border-white/[0.1] shadow-[0_-16px_60px_rgba(0,0,0,0.9),inset_0_1px_0_0_rgba(255,255,255,0.16)] w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-t-[34px] sm:rounded-[34px] p-5 sm:p-6 space-y-5"
+            className={`w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-t-[34px] sm:rounded-[34px] p-5 sm:p-6 space-y-5 border ${
+              isLight
+                ? 'bg-[#F8FAFC] border-slate-200 shadow-2xl text-slate-900'
+                : 'bg-gradient-to-b from-[#1E2127] to-[#121418] border-white/[0.1] shadow-[0_-16px_60px_rgba(0,0,0,0.9),inset_0_1px_0_0_rgba(255,255,255,0.16)] text-zinc-100'
+            }`}
           >
             {/* Mobile Drag Handle */}
-            <div className="w-10 h-1 rounded-full bg-zinc-600 mx-auto sm:hidden -mt-1 mb-2" />
+            <div
+              className={`w-10 h-1 rounded-full mx-auto sm:hidden -mt-1 mb-2 ${
+                isLight ? 'bg-slate-300' : 'bg-zinc-600'
+              }`}
+            />
 
             {/* Modal Header */}
-            <div className="flex items-start justify-between gap-3 border-b border-white/[0.08] pb-4">
+            <div
+              className={`flex items-start justify-between gap-3 border-b pb-4 ${
+                isLight ? 'border-slate-200' : 'border-white/[0.08]'
+              }`}
+            >
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-400/15 text-emerald-300 border border-emerald-400/30 inline-flex items-center gap-1">
+                  <span
+                    className={`text-xs font-bold px-2.5 py-0.5 rounded-full border inline-flex items-center gap-1 ${
+                      isLight
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : 'bg-emerald-400/15 text-emerald-300 border-emerald-400/30'
+                    }`}
+                  >
                     <ShieldCheck className="w-3.5 h-3.5" />
                     {selectedRink.verification_status}
                   </span>
@@ -1177,22 +1559,34 @@ export default function App() {
                     onClick={(e) => toggleWatchRink(e, selectedRink)}
                     className={`text-xs font-bold px-2.5 py-0.5 rounded-full border inline-flex items-center gap-1 transition ${
                       watchedIds.includes(selectedRink.id)
-                        ? 'bg-amber-400/20 text-amber-200 border-amber-400/40'
+                        ? isLight
+                          ? 'bg-amber-100 text-amber-800 border-amber-300'
+                          : 'bg-amber-400/20 text-amber-200 border-amber-400/40'
+                        : isLight
+                        ? 'bg-white text-slate-700 border-slate-200 hover:border-amber-400'
                         : 'bg-[#252932] text-zinc-300 border-white/[0.1] hover:border-amber-400/35'
                     }`}
                   >
                     <Star
                       className={`w-3 h-3 ${
-                        watchedIds.includes(selectedRink.id) ? 'fill-amber-300 text-amber-300' : ''
+                        watchedIds.includes(selectedRink.id) ? 'fill-amber-400 text-amber-400' : ''
                       }`}
                     />
                     {watchedIds.includes(selectedRink.id) ? 'Watching Weekend' : 'Watch Rink'}
                   </button>
                 </div>
-                <h2 className="text-xl sm:text-2xl font-extrabold text-white mt-2">
+                <h2
+                  className={`text-xl sm:text-2xl font-extrabold mt-2 ${
+                    isLight ? 'text-slate-950' : 'text-white'
+                  }`}
+                >
                   {selectedRink.name}
                 </h2>
-                <p className="text-xs text-zinc-400 font-medium mt-0.5">
+                <p
+                  className={`text-xs font-medium mt-0.5 ${
+                    isLight ? 'text-slate-500' : 'text-zinc-400'
+                  }`}
+                >
                   {selectedRink.city}, {selectedRink.state} • {selectedRink.sheets} Ice{' '}
                   {selectedRink.sheets === 1 ? 'Sheet' : 'Sheets'} • Baseline{' '}
                   {selectedRink.baseline_score}/100
@@ -1210,7 +1604,11 @@ export default function App() {
                 </div>
                 <button
                   onClick={() => setSelectedRink(null)}
-                  className="p-2.5 rounded-full bg-[#272B33] hover:bg-[#323741] text-zinc-200 transition"
+                  className={`p-2.5 rounded-full transition ${
+                    isLight
+                      ? 'bg-slate-200/80 hover:bg-slate-300 text-slate-800'
+                      : 'bg-[#272B33] hover:bg-[#323741] text-zinc-200'
+                  }`}
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1221,12 +1619,24 @@ export default function App() {
             {/* ACTIVE UPDATES LIST (Single-Deduction Lock + Dual Resolution)     */}
             {/* ================================================================= */}
             {selectedRinkAlerts.length > 0 && (
-              <div className="bg-gradient-to-b from-[#231D18] to-[#171412] border border-amber-400/30 shadow-[inset_0_1px_0_0_rgba(251,191,36,0.2)] rounded-[24px] p-4 space-y-2.5">
+              <div
+                className={`rounded-[24px] p-4 space-y-2.5 border ${
+                  isLight
+                    ? 'bg-amber-50/90 border-amber-300'
+                    : 'bg-gradient-to-b from-[#231D18] to-[#171412] border-amber-400/30 shadow-[inset_0_1px_0_0_rgba(251,191,36,0.2)]'
+                }`}
+              >
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-extrabold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+                  <h3
+                    className={`text-xs font-extrabold uppercase tracking-wider flex items-center gap-1.5 ${
+                      isLight ? 'text-amber-900' : 'text-amber-300'
+                    }`}
+                  >
                     <AlertCircle className="w-4 h-4" /> Active Rink Updates ({selectedRinkAlerts.length})
                   </h3>
-                  <span className="text-[11px] text-zinc-400">Visible to all parents</span>
+                  <span className={`text-[11px] ${isLight ? 'text-amber-800/80' : 'text-zinc-400'}`}>
+                    Visible to all parents
+                  </span>
                 </div>
 
                 <div className="space-y-2.5">
@@ -1239,7 +1649,11 @@ export default function App() {
                         key={al.id}
                         className={`border rounded-2xl p-3.5 text-xs space-y-2.5 ${
                           meta.isPermanent
-                            ? 'bg-rose-950/35 border-rose-400/35'
+                            ? isLight
+                              ? 'bg-rose-50 border-rose-300'
+                              : 'bg-rose-950/35 border-rose-400/35'
+                            : isLight
+                            ? 'bg-white border-amber-200'
                             : 'bg-[#12100E]/90 border-white/[0.07]'
                         }`}
                       >
@@ -1247,19 +1661,35 @@ export default function App() {
                           <div className="space-y-1">
                             <div className="flex flex-wrap items-center gap-2">
                               {meta.isPermanent && (
-                                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-rose-500/25 text-rose-200 border border-rose-400/40">
+                                <span
+                                  className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border ${
+                                    isLight
+                                      ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                      : 'bg-rose-500/25 text-rose-200 border-rose-400/40'
+                                  }`}
+                                >
                                   Permanent Closure Flag
                                 </span>
                               )}
-                              <span className="font-extrabold text-white text-sm">
+                              <span
+                                className={`font-extrabold text-sm ${
+                                  isLight ? 'text-slate-950' : 'text-white'
+                                }`}
+                              >
                                 {meta.cleanLabel}
                               </span>
                               <span
                                 className={`font-mono-score font-extrabold ${
                                   al.score_impact < 0
-                                    ? 'text-rose-400'
+                                    ? isLight
+                                      ? 'text-rose-600'
+                                      : 'text-rose-400'
                                     : al.score_impact > 0
-                                    ? 'text-emerald-400'
+                                    ? isLight
+                                      ? 'text-emerald-600'
+                                      : 'text-emerald-400'
+                                    : isLight
+                                    ? 'text-sky-700'
                                     : 'text-sky-300'
                                 }`}
                               >
@@ -1267,13 +1697,21 @@ export default function App() {
                               </span>
                             </div>
 
-                            <div className="text-[11px] text-zinc-400 flex flex-wrap items-center gap-2">
+                            <div
+                              className={`text-[11px] flex flex-wrap items-center gap-2 ${
+                                isLight ? 'text-slate-500' : 'text-zinc-400'
+                              }`}
+                            >
                               <span className="inline-flex items-center gap-1">
                                 <Clock className="w-3 h-3" />
                                 {formatTimeAgo(al.created_at)}
                               </span>
                               <span>•</span>
-                              <span className="text-zinc-300 font-semibold">
+                              <span
+                                className={`font-semibold ${
+                                  isLight ? 'text-slate-700' : 'text-zinc-300'
+                                }`}
+                              >
                                 Confirmed by {meta.confirmations}{' '}
                                 {meta.confirmations === 1 ? 'parent' : 'parents'}
                               </span>
@@ -1287,12 +1725,20 @@ export default function App() {
                           </div>
                         </div>
 
-                        {/* Dual Resolution Controls: Still Active / Parent Resolved / Staff PIN */}
-                        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/[0.06]">
+                        {/* Dual Resolution Controls */}
+                        <div
+                          className={`flex flex-wrap items-center gap-2 pt-2 border-t ${
+                            isLight ? 'border-slate-100' : 'border-white/[0.06]'
+                          }`}
+                        >
                           <button
                             disabled={busyAction}
                             onClick={() => handleConfirmStillActive(selectedRink, al)}
-                            className="px-3 py-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.11] text-zinc-200 font-bold text-[11px] transition active:scale-95"
+                            className={`px-3 py-1.5 rounded-full font-bold text-[11px] transition active:scale-95 ${
+                              isLight
+                                ? 'bg-slate-100 hover:bg-slate-200 text-slate-800'
+                                : 'bg-white/[0.06] hover:bg-white/[0.11] text-zinc-200'
+                            }`}
                           >
                             Still Active (+1 Confirm)
                           </button>
@@ -1300,7 +1746,11 @@ export default function App() {
                           <button
                             disabled={busyAction}
                             onClick={() => handleResolveAlert(selectedRink, al, false)}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-emerald-400/15 hover:bg-emerald-400/25 text-emerald-300 border border-emerald-400/35 font-extrabold text-[11px] transition active:scale-95"
+                            className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full border font-extrabold text-[11px] transition active:scale-95 ${
+                              isLight
+                                ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
+                                : 'bg-emerald-400/15 hover:bg-emerald-400/25 text-emerald-300 border-emerald-400/35'
+                            }`}
                           >
                             <RotateCcw className="w-3 h-3" />
                             <span>Mark Resolved</span>
@@ -1311,13 +1761,16 @@ export default function App() {
                               setStaffPinPromptAlertId(isStaffPromptOpen ? null : al.id);
                               setStaffPinInput('');
                             }}
-                            className="ml-auto text-[11px] text-zinc-400 hover:text-cyan-300 font-semibold underline"
+                            className={`ml-auto text-[11px] font-semibold underline ${
+                              isLight
+                                ? 'text-slate-500 hover:text-sky-700'
+                                : 'text-zinc-400 hover:text-cyan-300'
+                            }`}
                           >
                             Rink Staff PIN
                           </button>
                         </div>
 
-                        {/* Rink Manager 4-Digit PIN Verification Inline Box */}
                         {isStaffPromptOpen && (
                           <div className="flex items-center gap-2 pt-1">
                             <input
@@ -1326,7 +1779,11 @@ export default function App() {
                               placeholder="4-digit Staff PIN"
                               value={staffPinInput}
                               onChange={(e) => setStaffPinInput(e.target.value)}
-                              className="w-36 bg-[#0B0C0E] border border-cyan-400/40 rounded-full px-3 py-1.5 text-xs text-white focus:outline-none"
+                              className={`w-36 border rounded-full px-3 py-1.5 text-xs focus:outline-none ${
+                                isLight
+                                  ? 'bg-white border-sky-400 text-slate-900'
+                                  : 'bg-[#0B0C0E] border-cyan-400/40 text-white'
+                              }`}
                             />
                             <button
                               disabled={busyAction}
@@ -1353,14 +1810,26 @@ export default function App() {
             {/* ================================================================= */}
             {/* WAZE-STYLE 6-CATEGORY REPORT & UPDATE ENGINE                      */}
             {/* ================================================================= */}
-            <div className="bg-[#0F1114] border border-white/[0.07] shadow-[inset_0_2px_8px_rgba(0,0,0,0.6)] rounded-[24px] p-4 space-y-3.5">
+            <div
+              className={`rounded-[24px] p-4 space-y-3.5 border ${
+                isLight
+                  ? 'bg-white border-slate-200 shadow-sm'
+                  : 'bg-[#0F1114] border-white/[0.07] shadow-[inset_0_2px_8px_rgba(0,0,0,0.6)]'
+              }`}
+            >
               {!activeCategory ? (
                 <>
                   <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-extrabold uppercase tracking-wider text-cyan-300 flex items-center gap-1.5">
-                      <Flame className="w-4 h-4 text-amber-400" /> At This Rink? Tap a Category to Report
+                    <h3
+                      className={`text-xs font-extrabold uppercase tracking-wider flex items-center gap-1.5 ${
+                        isLight ? 'text-sky-800' : 'text-cyan-300'
+                      }`}
+                    >
+                      <Flame className="w-4 h-4 text-amber-500" /> At This Rink? Tap a Category to Report
                     </h3>
-                    <span className="text-[11px] text-zinc-500 font-medium">Waze-style 2-tap pulse</span>
+                    <span className={`text-[11px] font-medium ${isLight ? 'text-slate-400' : 'text-zinc-500'}`}>
+                      Waze-style 2-tap pulse
+                    </span>
                   </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
@@ -1370,14 +1839,32 @@ export default function App() {
                         <button
                           key={cat.id}
                           onClick={() => setActiveCategory(cat)}
-                          className="text-left bg-gradient-to-b from-[#1B1E24] to-[#15171C] hover:from-[#232730] hover:to-[#1A1D24] active:scale-[0.98] border border-white/[0.08] hover:border-cyan-400/35 rounded-2xl p-3 transition-all space-y-1.5"
+                          className={`text-left active:scale-[0.98] rounded-2xl p-3 transition-all space-y-1.5 border ${
+                            isLight
+                              ? 'bg-slate-50/80 hover:bg-slate-100 border-slate-200/90 hover:border-sky-400'
+                              : 'bg-gradient-to-b from-[#1B1E24] to-[#15171C] hover:from-[#232730] hover:to-[#1A1D24] border-white/[0.08] hover:border-cyan-400/35'
+                          }`}
                         >
-                          <div className={`w-8 h-8 rounded-xl border flex items-center justify-center ${cat.accent}`}>
+                          <div
+                            className={`w-8 h-8 rounded-xl border flex items-center justify-center ${
+                              isLight ? cat.accentLight : cat.accentDark
+                            }`}
+                          >
                             <IconComp className="w-4 h-4" />
                           </div>
                           <div>
-                            <p className="text-xs font-extrabold text-white">{cat.title}</p>
-                            <p className="text-[10px] text-zinc-400 leading-tight mt-0.5">
+                            <p
+                              className={`text-xs font-extrabold ${
+                                isLight ? 'text-slate-900' : 'text-white'
+                              }`}
+                            >
+                              {cat.title}
+                            </p>
+                            <p
+                              className={`text-[10px] leading-tight mt-0.5 ${
+                                isLight ? 'text-slate-500' : 'text-zinc-400'
+                              }`}
+                            >
                               {cat.subtitle}
                             </p>
                           </div>
@@ -1387,28 +1874,42 @@ export default function App() {
                   </div>
                 </>
               ) : (
-                /* Submenu View for Selected Waze Category */
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between border-b border-white/[0.07] pb-2.5">
+                  <div
+                    className={`flex items-center justify-between border-b pb-2.5 ${
+                      isLight ? 'border-slate-200' : 'border-white/[0.07]'
+                    }`}
+                  >
                     <button
                       onClick={() => setActiveCategory(null)}
-                      className="inline-flex items-center gap-1 text-xs font-extrabold text-cyan-300 hover:text-cyan-200"
+                      className={`inline-flex items-center gap-1 text-xs font-extrabold ${
+                        isLight ? 'text-sky-700 hover:text-sky-600' : 'text-cyan-300 hover:text-cyan-200'
+                      }`}
                     >
                       <ChevronLeft className="w-4 h-4" />
                       <span>All Categories</span>
                     </button>
-                    <span className="text-xs font-extrabold text-white">
+                    <span className={`text-xs font-extrabold ${isLight ? 'text-slate-900' : 'text-white'}`}>
                       {activeCategory.title}
                     </span>
                   </div>
 
-                  {/* Posted Hours Guardrail Note for Pro Shop */}
                   {activeCategory.showPostedHoursNote && (
-                    <div className="bg-sky-950/40 border border-sky-400/25 rounded-2xl px-3.5 py-2.5 text-[11px] text-sky-200 flex items-start gap-2">
-                      <Info className="w-4 h-4 text-sky-300 shrink-0 mt-0.5" />
+                    <div
+                      className={`rounded-2xl px-3.5 py-2.5 text-[11px] flex items-start gap-2 border ${
+                        isLight
+                          ? 'bg-sky-50 border-sky-200 text-sky-900'
+                          : 'bg-sky-950/40 border-sky-400/25 text-sky-200'
+                      }`}
+                    >
+                      <Info
+                        className={`w-4 h-4 shrink-0 mt-0.5 ${
+                          isLight ? 'text-sky-600' : 'text-sky-300'
+                        }`}
+                      />
                       <div>
                         <strong>Facility Pro Shop Info:</strong> {selectedRink.pro_shop_status}.{' '}
-                        <span className="text-sky-300/90">
+                        <span className="opacity-90">
                           If it’s an early game before normal shop hours, use the neutral{' '}
                           <strong>0 pt info tag</strong> below instead of reporting it closed.
                         </span>
@@ -1426,31 +1927,42 @@ export default function App() {
                           parseAlertMeta(al).cleanLabel.toLowerCase() === opt.label.toLowerCase()
                       );
 
-                      let pillStyle =
-                        'bg-[#1D2026] hover:bg-[#262A33] border-white/[0.09] text-zinc-100';
+                      let pillStyle = isLight
+                        ? 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-900'
+                        : 'bg-[#1D2026] hover:bg-[#262A33] border-white/[0.09] text-zinc-100';
                       let badgeText = '';
-                      let badgeColor = 'text-zinc-300';
+                      let badgeColor = isLight ? 'text-slate-700' : 'text-zinc-300';
 
                       if (opt.type === 'issue') {
-                        pillStyle =
-                          'bg-[#221B1E] hover:bg-[#2C2126] border-rose-400/25 text-zinc-100';
+                        pillStyle = isLight
+                          ? 'bg-rose-50/70 hover:bg-rose-100/70 border-rose-200 text-slate-900'
+                          : 'bg-[#221B1E] hover:bg-[#2C2126] border-rose-400/25 text-zinc-100';
                         badgeText = alreadyActive ? 'Active (Tap to Confirm)' : `${opt.impact} pts`;
-                        badgeColor = alreadyActive ? 'text-amber-300' : 'text-rose-400';
+                        badgeColor = alreadyActive
+                          ? isLight
+                            ? 'text-amber-700'
+                            : 'text-amber-300'
+                          : isLight
+                          ? 'text-rose-600'
+                          : 'text-rose-400';
                       } else if (opt.type === 'info') {
-                        pillStyle =
-                          'bg-[#182026] hover:bg-[#1E2932] border-sky-400/25 text-sky-100';
+                        pillStyle = isLight
+                          ? 'bg-sky-50/80 hover:bg-sky-100/80 border-sky-200 text-sky-950'
+                          : 'bg-[#182026] hover:bg-[#1E2932] border-sky-400/25 text-sky-100';
                         badgeText = '0 pts · Info Tag';
-                        badgeColor = 'text-sky-300';
+                        badgeColor = isLight ? 'text-sky-700' : 'text-sky-300';
                       } else if (opt.type === 'positive') {
-                        pillStyle =
-                          'bg-[#182320] hover:bg-[#1E2E2A] border-emerald-400/25 text-emerald-100';
+                        pillStyle = isLight
+                          ? 'bg-emerald-50/80 hover:bg-emerald-100/80 border-emerald-200 text-emerald-950'
+                          : 'bg-[#182320] hover:bg-[#1E2E2A] border-emerald-400/25 text-emerald-100';
                         badgeText = `+${opt.impact} pts`;
-                        badgeColor = 'text-emerald-400';
+                        badgeColor = isLight ? 'text-emerald-700' : 'text-emerald-400';
                       } else if (opt.type === 'permanent') {
-                        pillStyle =
-                          'bg-rose-950/40 hover:bg-rose-950/60 border-rose-500/35 text-rose-200';
+                        pillStyle = isLight
+                          ? 'bg-rose-100/80 hover:bg-rose-200/70 border-rose-300 text-rose-950'
+                          : 'bg-rose-950/40 hover:bg-rose-950/60 border-rose-500/35 text-rose-200';
                         badgeText = 'Flag Permanent';
-                        badgeColor = 'text-rose-300';
+                        badgeColor = isLight ? 'text-rose-700' : 'text-rose-300';
                       }
 
                       return (
@@ -1460,13 +1972,27 @@ export default function App() {
                           onClick={() => handleWazeOptionTap(selectedRink, activeCategory, opt)}
                           className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-2xl border text-left text-xs font-bold transition-all active:scale-[0.99] ${
                             onCooldown
-                              ? 'bg-[#14161A] border-white/[0.04] text-zinc-500 cursor-not-allowed'
+                              ? isLight
+                                ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                                : 'bg-[#14161A] border-white/[0.04] text-zinc-500 cursor-not-allowed'
                               : pillStyle
                           }`}
                         >
                           <span className="flex items-center gap-2">
-                            {opt.type === 'info' && <Info className="w-3.5 h-3.5 text-sky-400 shrink-0" />}
-                            {opt.type === 'permanent' && <Ban className="w-3.5 h-3.5 text-rose-400 shrink-0" />}
+                            {opt.type === 'info' && (
+                              <Info
+                                className={`w-3.5 h-3.5 shrink-0 ${
+                                  isLight ? 'text-sky-600' : 'text-sky-400'
+                                }`}
+                              />
+                            )}
+                            {opt.type === 'permanent' && (
+                              <Ban
+                                className={`w-3.5 h-3.5 shrink-0 ${
+                                  isLight ? 'text-rose-600' : 'text-rose-400'
+                                }`}
+                              />
+                            )}
                             <span>{opt.label}</span>
                           </span>
                           <span className={`font-mono-score font-extrabold shrink-0 ${badgeColor}`}>
@@ -1482,72 +2008,124 @@ export default function App() {
 
             {/* Complete v3.1 Tonal Bento Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-              <div className="bg-gradient-to-b from-[#1B1E24] to-[#15171C] border border-white/[0.07] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] rounded-[24px] p-4 space-y-1.5">
-                <div className="font-extrabold text-cyan-300 flex items-center gap-1.5 text-sm">
+              <div
+                className={`rounded-[24px] p-4 space-y-1.5 border ${
+                  isLight
+                    ? 'bg-white border-slate-200 shadow-sm text-slate-700'
+                    : 'bg-gradient-to-b from-[#1B1E24] to-[#15171C] border-white/[0.07] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] text-zinc-300'
+                }`}
+              >
+                <div
+                  className={`font-extrabold flex items-center gap-1.5 text-sm ${
+                    isLight ? 'text-sky-700' : 'text-cyan-300'
+                  }`}
+                >
                   <Snowflake className="w-4 h-4" /> Viewing & Temperature
                 </div>
-                <p className="text-white font-bold">{selectedRink.inside_temp_rating}</p>
-                <p className="text-zinc-400">{selectedRink.sheet_temp_notes}</p>
-                <p className="text-zinc-300 pt-1">• {selectedRink.viewing_comfort}</p>
-                <p className="text-zinc-300">
+                <p className={`font-bold ${isLight ? 'text-slate-950' : 'text-white'}`}>
+                  {selectedRink.inside_temp_rating}
+                </p>
+                <p className={isLight ? 'text-slate-500' : 'text-zinc-400'}>
+                  {selectedRink.sheet_temp_notes}
+                </p>
+                <p className="pt-1">• {selectedRink.viewing_comfort}</p>
+                <p>
                   • Corner Standing Mats:{' '}
-                  <strong className="text-white">
+                  <strong className={isLight ? 'text-slate-950' : 'text-white'}>
                     {selectedRink.corner_padded_mats ? 'Yes (Padded)' : 'Bare Concrete'}
                   </strong>
                 </p>
               </div>
 
-              <div className="bg-gradient-to-b from-[#1B1E24] to-[#15171C] border border-white/[0.07] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] rounded-[24px] p-4 space-y-1.5">
-                <div className="font-extrabold text-cyan-300 flex items-center gap-1.5 text-sm">
+              <div
+                className={`rounded-[24px] p-4 space-y-1.5 border ${
+                  isLight
+                    ? 'bg-white border-slate-200 shadow-sm text-slate-700'
+                    : 'bg-gradient-to-b from-[#1B1E24] to-[#15171C] border-white/[0.07] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] text-zinc-300'
+                }`}
+              >
+                <div
+                  className={`font-extrabold flex items-center gap-1.5 text-sm ${
+                    isLight ? 'text-sky-700' : 'text-cyan-300'
+                  }`}
+                >
                   <Eye className="w-4 h-4" /> Glass, Scoreboard & Stream
                 </div>
-                <p className="text-zinc-300">• Glass: {selectedRink.glass_clarity}</p>
-                <p className="text-zinc-300">• Scoreboard: {selectedRink.corner_scoreboard}</p>
-                <p className="text-zinc-300">
+                <p>• Glass: {selectedRink.glass_clarity}</p>
+                <p>• Scoreboard: {selectedRink.corner_scoreboard}</p>
+                <p>
                   • Streaming: {selectedRink.streaming_provider} ({selectedRink.streaming_status})
                 </p>
-                <p className="text-zinc-300">• Monitors: {selectedRink.locker_room_monitors}</p>
+                <p>• Monitors: {selectedRink.locker_room_monitors}</p>
               </div>
 
-              <div className="bg-gradient-to-b from-[#1B1E24] to-[#15171C] border border-white/[0.07] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] rounded-[24px] p-4 space-y-1.5">
-                <div className="font-extrabold text-cyan-300 flex items-center gap-1.5 text-sm">
+              <div
+                className={`rounded-[24px] p-4 space-y-1.5 border ${
+                  isLight
+                    ? 'bg-white border-slate-200 shadow-sm text-slate-700'
+                    : 'bg-gradient-to-b from-[#1B1E24] to-[#15171C] border-white/[0.07] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] text-zinc-300'
+                }`}
+              >
+                <div
+                  className={`font-extrabold flex items-center gap-1.5 text-sm ${
+                    isLight ? 'text-sky-700' : 'text-cyan-300'
+                  }`}
+                >
                   <ShoppingBag className="w-4 h-4" /> Pro Shop, 24/7 Vending & Food
                 </div>
-                <p className="text-zinc-300">• Shop: {selectedRink.pro_shop_status}</p>
-                <p className="text-zinc-300">
+                <p>• Shop: {selectedRink.pro_shop_status}</p>
+                <p>
                   • 24/7 Gear Vending:{' '}
-                  <strong className="text-white">
+                  <strong className={isLight ? 'text-slate-950' : 'text-white'}>
                     {selectedRink.has_hockey_vending ? 'Yes' : 'No'}
                   </strong>
                 </p>
-                <p className="text-zinc-300">• Food/Bar: {selectedRink.food_options}</p>
-                <p className="text-zinc-400 italic pt-0.5">{selectedRink.nearby_fallback_notes}</p>
+                <p>• Food/Bar: {selectedRink.food_options}</p>
+                <p className={`italic pt-0.5 ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
+                  {selectedRink.nearby_fallback_notes}
+                </p>
               </div>
 
-              <div className="bg-gradient-to-b from-[#1B1E24] to-[#15171C] border border-white/[0.07] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] rounded-[24px] p-4 space-y-1.5">
-                <div className="font-extrabold text-cyan-300 flex items-center gap-1.5 text-sm">
+              <div
+                className={`rounded-[24px] p-4 space-y-1.5 border ${
+                  isLight
+                    ? 'bg-white border-slate-200 shadow-sm text-slate-700'
+                    : 'bg-gradient-to-b from-[#1B1E24] to-[#15171C] border-white/[0.07] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] text-zinc-300'
+                }`}
+              >
+                <div
+                  className={`font-extrabold flex items-center gap-1.5 text-sm ${
+                    isLight ? 'text-sky-700' : 'text-cyan-300'
+                  }`}
+                >
                   <Footprints className="w-4 h-4" /> Floors, Parking & Off-Ice
                 </div>
-                <p className="text-zinc-300">• Floors: {selectedRink.skate_friendly_floors}</p>
-                <p className="text-zinc-300">• Cleanliness: {selectedRink.cleanliness_smell}</p>
-                <p className="text-zinc-300">
+                <p>• Floors: {selectedRink.skate_friendly_floors}</p>
+                <p>• Cleanliness: {selectedRink.cleanliness_smell}</p>
+                <p>
                   • Water Bottle Filler:{' '}
-                  <strong className="text-white">
+                  <strong className={isLight ? 'text-slate-950' : 'text-white'}>
                     {selectedRink.water_bottle_fillers ? 'Yes' : 'Check Lobby'}
                   </strong>
                 </p>
-                <p className="text-zinc-300">• Drop-Off/Lot: {selectedRink.parking_bag_drop}</p>
-                <p className="text-zinc-300">• Off-Ice: {selectedRink.off_ice_training}</p>
+                <p>• Drop-Off/Lot: {selectedRink.parking_bag_drop}</p>
+                <p>• Off-Ice: {selectedRink.off_ice_training}</p>
               </div>
             </div>
 
             {/* Smart Contextual Gear Recommendations */}
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-extrabold uppercase tracking-wider text-emerald-300 flex items-center gap-1.5">
+                <h3
+                  className={`text-xs font-extrabold uppercase tracking-wider flex items-center gap-1.5 ${
+                    isLight ? 'text-emerald-700' : 'text-emerald-300'
+                  }`}
+                >
                   <Sparkles className="w-4 h-4" /> Smart Prep For This Rink
                 </h3>
-                <span className="text-[10px] text-zinc-500 font-medium">Reader-supported links</span>
+                <span className={`text-[10px] font-medium ${isLight ? 'text-slate-400' : 'text-zinc-500'}`}>
+                  Reader-supported links
+                </span>
               </div>
               <div className="grid grid-cols-1 gap-2.5">
                 {getContextualGear(selectedRink).map((gear, i) => (
@@ -1556,30 +2134,60 @@ export default function App() {
                     href={gear.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="block bg-gradient-to-r from-[#18221F] to-[#16191F] hover:from-[#1E2B27] hover:to-[#1C2028] border border-emerald-400/25 shadow-[inset_0_1px_0_0_rgba(52,211,153,0.18)] rounded-[22px] p-4 transition-all"
+                    className={`block rounded-[22px] p-4 transition-all border ${
+                      isLight
+                        ? 'bg-gradient-to-r from-emerald-50/90 to-white hover:from-emerald-100/70 border-emerald-200 shadow-sm'
+                        : 'bg-gradient-to-r from-[#18221F] to-[#16191F] hover:from-[#1E2B27] hover:to-[#1C2028] border-emerald-400/25 shadow-[inset_0_1px_0_0_rgba(52,211,153,0.18)]'
+                    }`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-400/15 text-emerald-300">
+                      <span
+                        className={`text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full ${
+                          isLight
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-emerald-400/15 text-emerald-300'
+                        }`}
+                      >
                         {gear.badge}
                       </span>
-                      <span className="text-xs font-extrabold text-cyan-300 inline-flex items-center gap-1">
+                      <span
+                        className={`text-xs font-extrabold inline-flex items-center gap-1 ${
+                          isLight ? 'text-sky-700' : 'text-cyan-300'
+                        }`}
+                      >
                         {gear.cta} <ExternalLink className="w-3.5 h-3.5" />
                       </span>
                     </div>
-                    <p className="font-extrabold text-sm text-white mt-2">{gear.title}</p>
-                    <p className="text-xs text-zinc-400 mt-0.5">{gear.reason}</p>
+                    <p
+                      className={`font-extrabold text-sm mt-2 ${
+                        isLight ? 'text-slate-950' : 'text-white'
+                      }`}
+                    >
+                      {gear.title}
+                    </p>
+                    <p className={`text-xs mt-0.5 ${isLight ? 'text-slate-600' : 'text-zinc-400'}`}>
+                      {gear.reason}
+                    </p>
                   </a>
                 ))}
               </div>
             </div>
 
             {/* Bottom Actions */}
-            <div className="pt-3 border-t border-white/[0.08] flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div
+              className={`pt-3 border-t flex flex-wrap items-center justify-between gap-3 text-xs ${
+                isLight ? 'border-slate-200' : 'border-white/[0.08]'
+              }`}
+            >
               <button
                 onClick={() => handleVerifyRink(selectedRink)}
-                className="px-4 py-2.5 rounded-full bg-[#242830] hover:bg-[#2E333D] active:scale-95 text-zinc-100 font-bold inline-flex items-center gap-1.5 border border-white/[0.08] transition"
+                className={`px-4 py-2.5 rounded-full active:scale-95 font-bold inline-flex items-center gap-1.5 border transition ${
+                  isLight
+                    ? 'bg-white hover:bg-slate-100 text-slate-900 border-slate-200 shadow-sm'
+                    : 'bg-[#242830] hover:bg-[#2E333D] text-zinc-100 border-white/[0.08]'
+                }`}
               >
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                 Confirm Info Accurate Today
               </button>
 
@@ -1587,7 +2195,11 @@ export default function App() {
                 href={`mailto:myrinkrankings@gmail.com?subject=Update%20or%20Claim%20Rink:%20${encodeURIComponent(
                   selectedRink.name
                 )}`}
-                className="text-zinc-400 hover:text-cyan-300 underline font-medium"
+                className={`underline font-medium ${
+                  isLight
+                    ? 'text-slate-500 hover:text-sky-700'
+                    : 'text-zinc-400 hover:text-cyan-300'
+                }`}
               >
                 Rink Manager? Claim or Request Staff PIN
               </a>
@@ -1602,19 +2214,32 @@ export default function App() {
       {showAdminPinModal && (
         <div
           onClick={() => setShowAdminPinModal(false)}
-          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-gradient-to-b from-[#1E2127] to-[#121418] border border-white/[0.14] shadow-2xl w-full max-w-lg max-h-[88vh] overflow-y-auto rounded-[30px] p-6 space-y-4"
+            className={`w-full max-w-lg max-h-[88vh] overflow-y-auto rounded-[30px] p-6 space-y-4 border ${
+              isLight
+                ? 'bg-white border-slate-200 shadow-2xl text-slate-900'
+                : 'bg-gradient-to-b from-[#1E2127] to-[#121418] border-white/[0.14] shadow-2xl text-zinc-100'
+            }`}
           >
             <div className="flex items-center justify-between">
-              <h3 className="font-extrabold text-lg text-white flex items-center gap-2">
-                <Lock className="w-4 h-4 text-cyan-400" /> Founder Admin Panel
+              <h3
+                className={`font-extrabold text-lg flex items-center gap-2 ${
+                  isLight ? 'text-slate-950' : 'text-white'
+                }`}
+              >
+                <Lock className={`w-4 h-4 ${isLight ? 'text-sky-600' : 'text-cyan-400'}`} /> Founder
+                Admin Panel
               </h3>
               <button
                 onClick={() => setShowAdminPinModal(false)}
-                className="p-2 rounded-full bg-[#272B33] text-zinc-300 hover:text-white"
+                className={`p-2 rounded-full ${
+                  isLight
+                    ? 'bg-slate-100 text-slate-600 hover:text-slate-950'
+                    : 'bg-[#272B33] text-zinc-300 hover:text-white'
+                }`}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1633,7 +2258,7 @@ export default function App() {
                 }}
                 className="space-y-3 text-sm"
               >
-                <p className="text-xs text-zinc-400">
+                <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
                   Enter your 4-digit Founder PIN to review permanent amenity closure flags and
                   newly submitted rinks.
                 </p>
@@ -1644,24 +2269,39 @@ export default function App() {
                   placeholder="••••"
                   value={adminPinInput}
                   onChange={(e) => setAdminPinInput(e.target.value)}
-                  className="w-full bg-[#0F1114] border border-white/[0.1] focus:border-cyan-400/50 rounded-2xl px-4 py-3 text-center font-mono-score text-xl tracking-widest text-white focus:outline-none"
+                  className={`w-full border rounded-2xl px-4 py-3 text-center font-mono-score text-xl tracking-widest focus:outline-none ${
+                    isLight
+                      ? 'bg-slate-50 border-slate-300 focus:border-sky-500 text-slate-950'
+                      : 'bg-[#0F1114] border-white/[0.1] focus:border-cyan-400/50 text-white'
+                  }`}
                 />
                 <button
                   type="submit"
-                  className="w-full bg-gradient-to-b from-cyan-300 to-cyan-400 text-zinc-950 font-extrabold py-3 rounded-full"
+                  className={`w-full font-extrabold py-3 rounded-full ${
+                    isLight
+                      ? 'bg-slate-950 text-white'
+                      : 'bg-gradient-to-b from-cyan-300 to-cyan-400 text-zinc-950'
+                  }`}
                 >
                   Unlock Admin Queue
                 </button>
               </form>
             ) : (
               <div className="space-y-5 text-xs">
-                {/* Section 1: Permanent Closure Queue */}
                 <div className="space-y-2.5">
-                  <h4 className="font-extrabold uppercase tracking-wider text-rose-300">
+                  <h4
+                    className={`font-extrabold uppercase tracking-wider ${
+                      isLight ? 'text-rose-700' : 'text-rose-300'
+                    }`}
+                  >
                     Pending Permanent Closures ({permanentClosureFlags.length})
                   </h4>
                   {permanentClosureFlags.length === 0 ? (
-                    <p className="text-zinc-500 bg-[#0F1114] rounded-2xl p-3">
+                    <p
+                      className={`rounded-2xl p-3 ${
+                        isLight ? 'text-slate-500 bg-slate-100' : 'text-zinc-500 bg-[#0F1114]'
+                      }`}
+                    >
                       No permanent closure flags waiting for review.
                     </p>
                   ) : (
@@ -1671,14 +2311,28 @@ export default function App() {
                       return (
                         <div
                           key={flag.id}
-                          className="bg-[#0F1114] border border-rose-400/30 rounded-2xl p-3.5 space-y-2.5"
+                          className={`border rounded-2xl p-3.5 space-y-2.5 ${
+                            isLight
+                              ? 'bg-rose-50/70 border-rose-200'
+                              : 'bg-[#0F1114] border-rose-400/30'
+                          }`}
                         >
                           <div>
-                            <p className="font-extrabold text-white text-sm">
+                            <p
+                              className={`font-extrabold text-sm ${
+                                isLight ? 'text-slate-950' : 'text-white'
+                              }`}
+                            >
                               {target ? target.name : 'Unknown Rink'}
                             </p>
-                            <p className="text-rose-300 font-bold mt-0.5">{meta.cleanLabel}</p>
-                            <p className="text-zinc-400 mt-0.5">
+                            <p
+                              className={`font-bold mt-0.5 ${
+                                isLight ? 'text-rose-700' : 'text-rose-300'
+                              }`}
+                            >
+                              {meta.cleanLabel}
+                            </p>
+                            <p className={`mt-0.5 ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
                               Flagged {formatTimeAgo(flag.created_at)} • Confirmed by{' '}
                               {meta.confirmations}
                             </p>
@@ -1694,7 +2348,11 @@ export default function App() {
                             <button
                               disabled={busyAction}
                               onClick={() => target && handleResolveAlert(target, flag, true)}
-                              className="px-3.5 py-2 rounded-full bg-[#242830] hover:bg-[#2F343E] text-zinc-200 font-bold"
+                              className={`px-3.5 py-2 rounded-full font-bold ${
+                                isLight
+                                  ? 'bg-slate-200 hover:bg-slate-300 text-slate-800'
+                                  : 'bg-[#242830] hover:bg-[#2F343E] text-zinc-200'
+                              }`}
                             >
                               Dismiss (False Alarm)
                             </button>
@@ -1705,26 +2363,43 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Section 2: Submitted Missing Rinks */}
-                <div className="space-y-2.5 border-t border-white/[0.08] pt-4">
-                  <h4 className="font-extrabold uppercase tracking-wider text-cyan-300">
+                <div
+                  className={`space-y-2.5 border-t pt-4 ${
+                    isLight ? 'border-slate-200' : 'border-white/[0.08]'
+                  }`}
+                >
+                  <h4
+                    className={`font-extrabold uppercase tracking-wider ${
+                      isLight ? 'text-sky-700' : 'text-cyan-300'
+                    }`}
+                  >
                     Submitted Missing Rinks ({pendingRinks.length})
                   </h4>
                   {pendingRinks.length === 0 ? (
-                    <p className="text-zinc-500 bg-[#0F1114] rounded-2xl p-3">
+                    <p
+                      className={`rounded-2xl p-3 ${
+                        isLight ? 'text-slate-500 bg-slate-100' : 'text-zinc-500 bg-[#0F1114]'
+                      }`}
+                    >
                       No new rink submissions yet.
                     </p>
                   ) : (
                     pendingRinks.map((pr) => (
                       <div
                         key={pr.id}
-                        className="bg-[#0F1114] border border-white/[0.08] rounded-2xl p-3 space-y-1"
+                        className={`border rounded-2xl p-3 space-y-1 ${
+                          isLight
+                            ? 'bg-slate-50 border-slate-200'
+                            : 'bg-[#0F1114] border-white/[0.08]'
+                        }`}
                       >
-                        <p className="font-extrabold text-white">
+                        <p className={`font-extrabold ${isLight ? 'text-slate-950' : 'text-white'}`}>
                           {pr.name} ({pr.city}, {pr.state})
                         </p>
                         {pr.submitted_notes && (
-                          <p className="text-zinc-400">{pr.submitted_notes}</p>
+                          <p className={isLight ? 'text-slate-500' : 'text-zinc-400'}>
+                            {pr.submitted_notes}
+                          </p>
                         )}
                       </div>
                     ))
@@ -1746,47 +2421,87 @@ export default function App() {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-gradient-to-b from-[#1E2127] to-[#121418] border border-white/[0.12] shadow-[0_24px_60px_rgba(0,0,0,0.9),inset_0_1px_0_0_rgba(255,255,255,0.16)] w-full max-w-md rounded-[30px] p-6 space-y-4"
+            className={`w-full max-w-md rounded-[30px] p-6 space-y-4 border ${
+              isLight
+                ? 'bg-white border-slate-200 shadow-2xl text-slate-900'
+                : 'bg-gradient-to-b from-[#1E2127] to-[#121418] border-white/[0.12] shadow-[0_24px_60px_rgba(0,0,0,0.9),inset_0_1px_0_0_rgba(255,255,255,0.16)] text-zinc-100'
+            }`}
           >
             <div className="flex items-center justify-between">
-              <h3 className="font-extrabold text-lg text-white">Submit a Missing Rink</h3>
+              <h3 className={`font-extrabold text-lg ${isLight ? 'text-slate-950' : 'text-white'}`}>
+                Submit a Missing Rink
+              </h3>
               <button
                 onClick={() => setShowAddRink(false)}
-                className="p-2 rounded-full bg-[#272B33] text-zinc-300 hover:text-white"
+                className={`p-2 rounded-full ${
+                  isLight
+                    ? 'bg-slate-100 text-slate-600 hover:text-slate-950'
+                    : 'bg-[#272B33] text-zinc-300 hover:text-white'
+                }`}
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
             <form onSubmit={handleAddRinkSubmit} className="space-y-3.5 text-sm">
               <div>
-                <label className="block text-xs font-bold text-zinc-400 mb-1.5">Rink Name *</label>
+                <label
+                  className={`block text-xs font-bold mb-1.5 ${
+                    isLight ? 'text-slate-600' : 'text-zinc-400'
+                  }`}
+                >
+                  Rink Name *
+                </label>
                 <input
                   required
                   type="text"
                   placeholder="e.g., Floyd Hall Arena"
                   value={newRink.name}
                   onChange={(e) => setNewRink({ ...newRink, name: e.target.value })}
-                  className="w-full bg-[#0F1114] border border-white/[0.08] focus:border-cyan-400/50 rounded-2xl px-4 py-2.5 text-white focus:outline-none"
+                  className={`w-full border rounded-2xl px-4 py-2.5 focus:outline-none ${
+                    isLight
+                      ? 'bg-slate-50 border-slate-300 focus:border-sky-500 text-slate-950'
+                      : 'bg-[#0F1114] border-white/[0.08] focus:border-cyan-400/50 text-white'
+                  }`}
                 />
               </div>
               <div className="grid grid-cols-3 gap-2.5">
                 <div className="col-span-2">
-                  <label className="block text-xs font-bold text-zinc-400 mb-1.5">City / Town *</label>
+                  <label
+                    className={`block text-xs font-bold mb-1.5 ${
+                      isLight ? 'text-slate-600' : 'text-zinc-400'
+                    }`}
+                  >
+                    City / Town *
+                  </label>
                   <input
                     required
                     type="text"
                     placeholder="e.g., Little Falls"
                     value={newRink.city}
                     onChange={(e) => setNewRink({ ...newRink, city: e.target.value })}
-                    className="w-full bg-[#0F1114] border border-white/[0.08] focus:border-cyan-400/50 rounded-2xl px-4 py-2.5 text-white focus:outline-none"
+                    className={`w-full border rounded-2xl px-4 py-2.5 focus:outline-none ${
+                      isLight
+                        ? 'bg-slate-50 border-slate-300 focus:border-sky-500 text-slate-950'
+                        : 'bg-[#0F1114] border-white/[0.08] focus:border-cyan-400/50 text-white'
+                    }`}
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-1.5">State</label>
+                  <label
+                    className={`block text-xs font-bold mb-1.5 ${
+                      isLight ? 'text-slate-600' : 'text-zinc-400'
+                    }`}
+                  >
+                    State
+                  </label>
                   <select
                     value={newRink.state}
                     onChange={(e) => setNewRink({ ...newRink, state: e.target.value })}
-                    className="w-full bg-[#0F1114] border border-white/[0.08] focus:border-cyan-400/50 rounded-2xl px-3 py-2.5 text-white focus:outline-none"
+                    className={`w-full border rounded-2xl px-3 py-2.5 focus:outline-none ${
+                      isLight
+                        ? 'bg-slate-50 border-slate-300 focus:border-sky-500 text-slate-950'
+                        : 'bg-[#0F1114] border-white/[0.08] focus:border-cyan-400/50 text-white'
+                    }`}
                   >
                     {['NJ', 'NY', 'PA', 'CT', 'MA', 'DE', 'MD', 'OTHER'].map((s) => (
                       <option key={s} value={s}>
@@ -1797,7 +2512,11 @@ export default function App() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-bold text-zinc-400 mb-1.5">
+                <label
+                  className={`block text-xs font-bold mb-1.5 ${
+                    isLight ? 'text-slate-600' : 'text-zinc-400'
+                  }`}
+                >
                   Quick Notes (Pro shop, coldness, LiveBarn, etc.)
                 </label>
                 <textarea
@@ -1805,13 +2524,21 @@ export default function App() {
                   placeholder="Tell other parents what to expect..."
                   value={newRink.notes}
                   onChange={(e) => setNewRink({ ...newRink, notes: e.target.value })}
-                  className="w-full bg-[#0F1114] border border-white/[0.08] focus:border-cyan-400/50 rounded-2xl px-4 py-2.5 text-white focus:outline-none"
+                  className={`w-full border rounded-2xl px-4 py-2.5 focus:outline-none ${
+                    isLight
+                      ? 'bg-slate-50 border-slate-300 focus:border-sky-500 text-slate-950'
+                      : 'bg-[#0F1114] border-white/[0.08] focus:border-cyan-400/50 text-white'
+                  }`}
                 />
               </div>
               <button
                 type="submit"
                 disabled={submittingRink}
-                className="w-full bg-gradient-to-b from-cyan-300 to-cyan-400 hover:from-cyan-200 hover:to-cyan-300 text-zinc-950 font-extrabold py-3 rounded-full shadow-lg transition"
+                className={`w-full font-extrabold py-3 rounded-full shadow-lg transition ${
+                  isLight
+                    ? 'bg-slate-950 hover:bg-slate-800 text-white'
+                    : 'bg-gradient-to-b from-cyan-300 to-cyan-400 hover:from-cyan-200 hover:to-cyan-300 text-zinc-950'
+                }`}
               >
                 {submittingRink ? 'Submitting...' : 'Submit Rink for Review'}
               </button>
@@ -1830,33 +2557,50 @@ export default function App() {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-gradient-to-b from-[#1E2127] to-[#121418] border border-white/[0.12] shadow-[0_24px_60px_rgba(0,0,0,0.9),inset_0_1px_0_0_rgba(255,255,255,0.16)] w-full max-w-lg rounded-[30px] p-6 space-y-3 text-xs text-zinc-300"
+            className={`w-full max-w-lg rounded-[30px] p-6 space-y-3 text-xs border ${
+              isLight
+                ? 'bg-white border-slate-200 shadow-2xl text-slate-600'
+                : 'bg-gradient-to-b from-[#1E2127] to-[#121418] border-white/[0.12] shadow-[0_24px_60px_rgba(0,0,0,0.9),inset_0_1px_0_0_rgba(255,255,255,0.16)] text-zinc-300'
+            }`}
           >
             <div className="flex items-center justify-between">
-              <h3 className="font-extrabold text-base text-white">
+              <h3 className={`font-extrabold text-base ${isLight ? 'text-slate-950' : 'text-white'}`}>
                 Affiliate Disclosure, Terms & Privacy
               </h3>
               <button
                 onClick={() => setShowLegalModal(false)}
-                className="p-2 rounded-full bg-[#272B33] text-zinc-300"
+                className={`p-2 rounded-full ${
+                  isLight ? 'bg-slate-100 text-slate-600' : 'bg-[#272B33] text-zinc-300'
+                }`}
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
             <p>
-              <strong className="text-white">Affiliate Disclosure:</strong> MyRinkRankings is 100%
-              free for hockey families. To keep the app free, some gear links (such as Amazon, Pure
-              Hockey, or HockeyMonkey) may earn a small commission at zero extra cost to you.
+              <strong className={isLight ? 'text-slate-950' : 'text-white'}>
+                Affiliate Disclosure:
+              </strong>{' '}
+              MyRinkRankings is 100% free for hockey families. To keep the app free, some gear links
+              (such as Amazon, Pure Hockey, or HockeyMonkey) may earn a small commission at zero
+              extra cost to you.
             </p>
             <p>
-              <strong className="text-white">Community Scores:</strong> Rink scores and live pulse
-              updates reflect crowdsourced parent observations and automatically expire after 4 to
-              48 hours unless confirmed permanent.
+              <strong className={isLight ? 'text-slate-950' : 'text-white'}>
+                Community Scores:
+              </strong>{' '}
+              Rink scores and live pulse updates reflect crowdsourced parent observations and
+              automatically expire after 4 to 48 hours unless confirmed permanent.
             </p>
             <p>
-              <strong className="text-white">Privacy & Contact:</strong> We do not sell personal
-              user data. Questions or rink verification requests can be sent to{' '}
-              <span className="text-cyan-400">myrinkrankings@gmail.com</span>.
+              <strong className={isLight ? 'text-slate-950' : 'text-white'}>
+                Privacy & Contact:
+              </strong>{' '}
+              We do not sell personal user data. Questions or rink verification requests can be sent
+              to{' '}
+              <span className={isLight ? 'text-sky-700 font-semibold' : 'text-cyan-400'}>
+                myrinkrankings@gmail.com
+              </span>
+              .
             </p>
           </div>
         </div>
