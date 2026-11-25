@@ -1350,18 +1350,23 @@ export default function App() {
                           )}
                         </div>
                         <p
-                          className={`text-xs mt-1 flex items-center gap-1.5 font-medium ${
+                          className={`text-xs mt-1 flex flex-wrap items-center gap-1.5 font-medium ${
                             isLight ? 'text-slate-500' : 'text-zinc-400'
                           }`}
                         >
                           <MapPin
-                            className={`w-3.5 h-3.5 ${
+                            className={`w-3.5 h-3.5 shrink-0 ${
                               isLight ? 'text-slate-400' : 'text-zinc-500'
                             }`}
                           />
                           <span>
                             {rink.city}, {rink.state} • {rink.sheets}{' '}
                             {rink.sheets === 1 ? 'Sheet' : 'Sheets'}
+                            {rink.sheet_temp_notes &&
+                            (rink.sheet_temp_notes.toLowerCase().includes('mini') ||
+                              rink.sheet_temp_notes.toLowerCase().includes('gaudreau'))
+                              ? ' + Mini Rink'
+                              : ''}
                           </span>
                         </p>
                       </div>
@@ -1587,10 +1592,21 @@ export default function App() {
                     isLight ? 'text-slate-500' : 'text-zinc-400'
                   }`}
                 >
-                  {selectedRink.city}, {selectedRink.state} • {selectedRink.sheets} Ice{' '}
-                  {selectedRink.sheets === 1 ? 'Sheet' : 'Sheets'} • Baseline{' '}
+                  {selectedRink.city}, {selectedRink.state} • Baseline{' '}
                   {selectedRink.baseline_score}/100
                 </p>
+                {selectedRink.sheet_temp_notes && (
+                  <p
+                    className={`text-xs font-bold mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border ${
+                      isLight
+                        ? 'bg-sky-50 text-sky-900 border-sky-200'
+                        : 'bg-cyan-400/10 text-cyan-200 border-cyan-400/25'
+                    }`}
+                  >
+                    <Layers className="w-3.5 h-3.5 shrink-0" />
+                    <span>{selectedRink.sheet_temp_notes}</span>
+                  </p>
+                )}
               </div>
 
               <div className="flex items-center gap-2.5">
@@ -2020,7 +2036,7 @@ export default function App() {
                     isLight ? 'text-sky-700' : 'text-cyan-300'
                   }`}
                 >
-                  <Snowflake className="w-4 h-4" /> Viewing & Temperature
+                  <Snowflake className="w-4 h-4" /> Ice Sheets & Temperature
                 </div>
                 <p className={`font-bold ${isLight ? 'text-slate-950' : 'text-white'}`}>
                   {selectedRink.inside_temp_rating}
