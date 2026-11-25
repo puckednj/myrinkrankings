@@ -136,6 +136,9 @@ const THEME_STORAGE_KEY = 'mrr_theme_mode_v1';
 
 // Classify 4-Tier Hockey Services (0 = None, 1 = Vending, 2 = Sharpening & Essentials, 3 = Full Pro Shop)
 function getHockeyServiceTier(rink) {
+  if (rink?.pro_shop_tier !== null && rink?.pro_shop_tier !== undefined) {
+    return Number(rink.pro_shop_tier);
+  }
   const status = (rink?.pro_shop_status || '').toLowerCase();
   if (
     status.includes('sharpening & essentials') ||
@@ -169,7 +172,7 @@ function formatMainCardSheets(rink) {
   const miniMatch = notes.match(/\+\s*(\d+)\s*(?:studio\/)?mini/);
   if (miniMatch) {
     miniCount = Number(miniMatch[1]);
-  } else if (notes.includes('gaudreau') || notes.includes('mini')) {
+  } else if (rink?.has_mini_rink || notes.includes('gaudreau') || notes.includes('mini')) {
     miniCount = 1;
   }
 
@@ -676,7 +679,7 @@ export default function App() {
   };
 
   // ============================================================================
-  // FOUNDER ADMIN: 1-TAP PERMANENT CLOSURE APPROVAL & BASELINE RECALCULATION
+  // FOUNDER ADMIN: 1-TAP PERMANENT CLOSURE APPROVAL & TRIGGER-SYNCED RECALC
   // ============================================================================
   const handleAdminApproveClosure = async (alertItem) => {
     const targetRink = rinks.find((r) => r.id === alertItem.rink_id);
@@ -684,57 +687,100 @@ export default function App() {
 
     const meta = parseAlertMeta(alertItem);
     const labelLower = meta.cleanLabel.toLowerCase();
-
-    let permDelta = -3;
     const rinkUpdates = { updated_at: new Date().toISOString() };
 
     if (labelLower.includes('pro shop')) {
       if (targetRink.has_hockey_vending) {
-        permDelta = -5;
+        rinkUpdates.pro_shop_tier = 1;
         rinkUpdates.pro_shop_status = 'No Pro Shop (24/7 Vending Only)';
       } else {
-        permDelta = -8;
+        rinkUpdates.pro_shop_tier = 0;
         rinkUpdates.pro_shop_status = 'No Pro Shop / No Sharpening';
       }
     } else if (labelLower.includes('restaurant') || labelLower.includes('bar')) {
-      permDelta = -5;
+      rinkUpdates.hospitality_tier = 0;
       rinkUpdates.has_bar_restaurant = false;
       rinkUpdates.food_options = 'Vending / Snack Bar Only';
     } else if (labelLower.includes('snack')) {
-      permDelta = -3;
+      rinkUpdates.hospitality_tier = 0;
       rinkUpdates.food_options = 'No On-Site Food (Vending Only)';
     } else if (labelLower.includes('gym') || labelLower.includes('off-ice')) {
-      permDelta = -3;
+      rinkUpdates.has_off_ice = false;
       rinkUpdates.off_ice_training = 'None (Closed)';
     }
 
-    const holdReversed = targetRink.live_score - (alertItem.score_impact || 0);
-    const newBaseline = Math.max(0, Math.min(100, targetRink.baseline_score + permDelta));
-    const newLive = Math.max(0, Math.min(100, holdReversed + permDelta));
-
-    rinkUpdates.baseline_score = newBaseline;
-    rinkUpdates.live_score = newLive;
-
     setBusyAction(true);
     try {
-      const { error: rErr } = await supabase
-        .from('rinks')
-        .update(rinkUpdates)
-        .eq('id', targetRink.id);
-      if (rErr) throw rErr;
-
       const { error: aErr } = await supabase
         .from('rink_alerts')
         .update({ status: 'approved_permanent' })
         .eq('id', alertItem.id);
       if (aErr) throw aErr;
 
-      showToast(
-        `Updated ${targetRink.name}: Baseline ${targetRink.baseline_score} → ${newBaseline} (${permDelta} pts)`
-      );
+      // Updating integer tiers fires trg_universal_rink_score automatically in Supabase
+      const { error: rErr } = await supabase
+        .from('rinks')
+        .update(rinkUpdates)
+        .eq('id', targetRink.id);
+      if (rErr) throw rErr;
+
+      showToast(`Approved permanent change & recalculated ${targetRink.name} automatically.`);
       await fetchData();
     } catch (err) {
       showToast('Admin update failed: ' + err.message);
+    } finally {
+      setBusyAction(false);
+    }
+  };
+
+  // ============================================================================
+  // FOUNDER ADMIN: 1-TAP APPROVE & PUBLISH SUBMITTED RINK
+  // ============================================================================
+  const handleAdminPublishPendingRink = async (pendingItem) => {
+    if (busyAction) return;
+    setBusyAction(true);
+    try {
+      const sheetsCount = Math.max(1, Number(pendingItem.sheets) || 1);
+      const { error: insertErr } = await supabase.from('rinks').insert([
+        {
+          name: pendingItem.name,
+          city: pendingItem.city,
+          state: pendingItem.state || 'NJ',
+          sheets: sheetsCount,
+          has_mini_rink: false,
+          condition_tier: 3,
+          pro_shop_tier: 2,
+          hospitality_tier: 0,
+          viewing_tier: 1,
+          has_off_ice: false,
+          sheet_temp_notes:
+            pendingItem.submitted_notes || `${sheetsCount} Regulation Sheet(s)`,
+          pro_shop_status: 'Sharpening & Essentials (Tape, Laces, Blades)',
+          food_options: 'Basic Concession Stand / Vending Only',
+          viewing_comfort: 'Standard Heated Lobby Viewing',
+          off_ice_training: 'None',
+          inside_temp_rating: 'Standard Rink Temp',
+          glass_clarity: 'Clear Standard Glass',
+          corner_scoreboard: 'Standard Scoreboard',
+          streaming_provider: 'LiveBarn',
+          streaming_status: 'Active',
+          locker_room_monitors: 'Lobby Monitor',
+          skate_friendly_floors: 'Rubber Matting',
+          cleanliness_smell: 'Standard Arena Cleanliness',
+          parking_bag_drop: 'On-Site Lot',
+          nearby_fallback_notes: '',
+          verification_status: 'Verified by Hockey Parents',
+          cold_penalty: 0,
+        },
+      ]);
+      if (insertErr) throw insertErr;
+
+      await supabase.from('pending_rinks').delete().eq('id', pendingItem.id);
+
+      showToast(`Published ${pendingItem.name} to live leaderboard!`);
+      await Promise.all([fetchData(), fetchPendingRinks()]);
+    } catch (err) {
+      showToast('Could not publish rink: ' + err.message);
     } finally {
       setBusyAction(false);
     }
@@ -774,7 +820,7 @@ export default function App() {
       if (error) throw error;
       setNewRink({ name: '', city: '', state: 'NJ', sheets: 1, notes: '' });
       setShowAddRink(false);
-      showToast('Rink submitted! Thanks for helping Tri-State hockey families.');
+      showToast('Rink submitted! Thanks for helping hockey families.');
     } catch (err) {
       showToast('Could not submit rink: ' + err.message);
     } finally {
@@ -881,8 +927,8 @@ export default function App() {
       });
     }
     if (
-      rink.skate_friendly_floors.toLowerCase().includes('partial') ||
-      rink.skate_friendly_floors.toLowerCase().includes('concrete')
+      (rink.skate_friendly_floors || '').toLowerCase().includes('partial') ||
+      (rink.skate_friendly_floors || '').toLowerCase().includes('concrete')
     ) {
       items.push({
         badge: 'PROTECT YOUR BLADES',
@@ -1383,7 +1429,7 @@ export default function App() {
             <RefreshCw
               className={`w-6 h-6 animate-spin ${isLight ? 'text-sky-600' : 'text-cyan-400'}`}
             />
-            <p className="text-sm font-medium">Loading live Tri-State rink telemetry...</p>
+            <p className="text-sm font-medium">Loading live rink telemetry...</p>
           </div>
         ) : errorMsg ? (
           <div className="bg-rose-950/40 border border-rose-500/40 rounded-[26px] p-4 text-sm text-rose-200">
@@ -2635,20 +2681,29 @@ export default function App() {
                     pendingRinks.map((pr) => (
                       <div
                         key={pr.id}
-                        className={`border rounded-2xl p-3 space-y-1 ${
+                        className={`border rounded-2xl p-3.5 space-y-2.5 ${
                           isLight
                             ? 'bg-slate-50 border-slate-200'
                             : 'bg-[#0F1114] border-white/[0.08]'
                         }`}
                       >
-                        <p className={`font-extrabold ${isLight ? 'text-slate-950' : 'text-white'}`}>
-                          {pr.name} ({pr.city}, {pr.state})
-                        </p>
-                        {pr.submitted_notes && (
-                          <p className={isLight ? 'text-slate-500' : 'text-zinc-400'}>
-                            {pr.submitted_notes}
+                        <div>
+                          <p className={`font-extrabold text-sm ${isLight ? 'text-slate-950' : 'text-white'}`}>
+                            {pr.name} ({pr.city}, {pr.state}) • {pr.sheets || 1} Sheet(s)
                           </p>
-                        )}
+                          {pr.submitted_notes && (
+                            <p className={`mt-1 ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
+                              {pr.submitted_notes}
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          disabled={busyAction}
+                          onClick={() => handleAdminPublishPendingRink(pr)}
+                          className="px-3.5 py-2 rounded-full bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-extrabold"
+                        >
+                          Approve & Publish to Live Board
+                        </button>
                       </div>
                     ))
                   )}
