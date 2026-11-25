@@ -6,7 +6,7 @@ import {
   Mail, MapPin, RefreshCw, CheckCircle2, ArrowUpRight,
   Radio, Layers, ThermometerSnowflake, AlertCircle, RotateCcw,
   Clock, Star, Info, Ban, Lock, ChevronLeft, Users, Tv, Car,
-  Sun, Moon
+  Sun, Moon, Building2
 } from 'lucide-react';
 
 // ============================================================================
@@ -19,6 +19,7 @@ const AFFILIATE_LINKS = {
   heatedJacket: 'https://www.amazon.com/s?k=mens+womens+heated+jacket+battery+pack',
   handWarmers: 'https://www.amazon.com/s?k=rechargeable+hand+warmers+2+pack',
   pureHockeyTapeLaces: 'https://www.purehockey.com/c/hockey-tape-laces-accessories',
+  pureHockeySticksGear: 'https://www.purehockey.com/c/hockey-sticks',
   hockeyMonkeySharpening: 'https://www.hockeymonkey.com/accessories/skate-accessories/skate-sharpeners.html',
   skateGuards: 'https://www.purehockey.com/c/skate-guards-soakers',
   powerBank: 'https://www.amazon.com/s?k=portable+charger+power+bank+fast+charging',
@@ -119,10 +120,45 @@ const WAZE_CATEGORIES = [
   },
 ];
 
+const CONDITION_LABELS = {
+  1: 'Dated / Needs TLC',
+  2: 'Below Average Upkeep',
+  3: 'Solid Standard Rink',
+  4: 'Clean & Well-Kept',
+  5: 'Modern & Spotless',
+};
+
 const COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 hours per rink + option
 const COOLDOWN_STORAGE_KEY = 'mrr_waze_cooldowns_v2';
+const CONDITION_VOTE_STORAGE_KEY = 'mrr_condition_votes_v1';
 const WATCHED_STORAGE_KEY = 'mrr_watched_rinks_v1';
 const THEME_STORAGE_KEY = 'mrr_theme_mode_v1';
+
+// Classify 4-Tier Hockey Services (0 = None, 1 = Vending, 2 = Sharpening & Essentials, 3 = Full Pro Shop)
+function getHockeyServiceTier(rink) {
+  const status = (rink?.pro_shop_status || '').toLowerCase();
+  if (
+    status.includes('sharpening & essentials') ||
+    (status.includes('sharpening') && !status.includes('no sharpening') && status.includes('no pro shop'))
+  ) {
+    return 2;
+  }
+  if (status !== '' && !status.includes('no pro shop') && !status.includes('vending only')) {
+    return 3;
+  }
+  if (rink?.has_hockey_vending || status.includes('vending')) {
+    return 1;
+  }
+  return 0;
+}
+
+// Progressive Blended Facility Condition Rating (1.0 - 5.0)
+function getBlendedConditionRating(rink) {
+  const seed = Number(rink?.condition_tier) || 3;
+  const sum = Number(rink?.condition_rating_sum) || 0;
+  const count = Number(rink?.condition_rating_count) || 0;
+  return (seed * 5 + sum) / (5 + count);
+}
 
 // Format regulation + mini rink counts and total sheets in the building
 function formatMainCardSheets(rink) {
@@ -212,10 +248,19 @@ export default function App() {
     if (metaTheme) metaTheme.setAttribute('content', bgHex);
   }, [isLight]);
 
-  // Local device state: Cooldowns & Watched Weekend Rinks
+  // Local device state: Cooldowns, Condition Votes & Watched Weekend Rinks
   const [cooldowns, setCooldowns] = useState(() => {
     try {
       const saved = localStorage.getItem(COOLDOWN_STORAGE_KEY);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const [conditionVotes, setConditionVotes] = useState(() => {
+    try {
+      const saved = localStorage.getItem(CONDITION_VOTE_STORAGE_KEY);
       return saved ? JSON.parse(saved) : {};
     } catch {
       return {};
@@ -403,7 +448,7 @@ export default function App() {
         if (stateFilter !== 'ALL' && r.state !== stateFilter) return false;
         if (quickFilter === 'WATCHED' && !watchedIds.includes(r.id)) return false;
         if (quickFilter === 'HOME' && !r.is_home_rink) return false;
-        if (quickFilter === 'SHOP' && r.pro_shop_status.toLowerCase().includes('no pro shop')) return false;
+        if (quickFilter === 'SHOP' && getHockeyServiceTier(r) < 2) return false;
         if (quickFilter === 'COLD' && r.cold_penalty === 0) return false;
         if (quickFilter === 'BAR' && !r.has_bar_restaurant) return false;
         if (searchQuery.trim() !== '') {
@@ -418,6 +463,63 @@ export default function App() {
       })
       .sort((a, b) => b.live_score - a.live_score);
   }, [rinks, stateFilter, quickFilter, searchQuery, watchedIds]);
+
+  // ============================================================================
+  // CROWDSOURCED FACILITY CONDITION & AESTHETICS RATING (1-5 Progressive Blend)
+  // ============================================================================
+  const handleRateCondition = async (rink, stars) => {
+    if (busyAction) return;
+
+    const prevVote = conditionVotes[rink.id];
+    const seed = Number(rink.condition_tier) || 3;
+    const oldSum = Number(rink.condition_rating_sum) || 0;
+    const oldCount = Number(rink.condition_rating_count) || 0;
+
+    const newSum = prevVote ? oldSum - prevVote + stars : oldSum + stars;
+    const newCount = prevVote ? oldCount : oldCount + 1;
+
+    const oldBlended = (seed * 5 + oldSum) / (5 + oldCount);
+    const newBlended = (seed * 5 + newSum) / (5 + newCount);
+
+    // 3.5 pts per star tier in Pillar 2 (25-pt Facility Condition & Aesthetics pillar)
+    const oldPts = Math.round(oldBlended * 3.5);
+    const newPts = Math.round(newBlended * 3.5);
+    const ptsDelta = newPts - oldPts;
+
+    const nextBaseline = Math.max(0, Math.min(100, rink.baseline_score + ptsDelta));
+    const nextLive = Math.max(0, Math.min(100, rink.live_score + ptsDelta));
+
+    setBusyAction(true);
+    try {
+      const { error } = await supabase
+        .from('rinks')
+        .update({
+          condition_rating_sum: newSum,
+          condition_rating_count: newCount,
+          baseline_score: nextBaseline,
+          live_score: nextLive,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', rink.id);
+
+      if (error) throw error;
+
+      const updatedVotes = { ...conditionVotes, [rink.id]: stars };
+      setConditionVotes(updatedVotes);
+      try {
+        localStorage.setItem(CONDITION_VOTE_STORAGE_KEY, JSON.stringify(updatedVotes));
+      } catch {
+        // ignore storage errors
+      }
+
+      showToast(`Facility condition rated ${stars}/5 (${CONDITION_LABELS[stars]})`);
+      await fetchData();
+    } catch (err) {
+      showToast('Could not save condition rating: ' + err.message);
+    } finally {
+      setBusyAction(false);
+    }
+  };
 
   // ============================================================================
   // WAZE-STYLE REPORT HANDLER (Single-Deduction Lock + Confirmation Increment)
@@ -750,6 +852,7 @@ export default function App() {
         parseAlertMeta(a).cleanLabel.toLowerCase().includes('pro shop') ||
         parseAlertMeta(a).cleanLabel.toLowerCase().includes('sharpening')
     );
+    const serviceTier = getHockeyServiceTier(rink);
 
     if (rink.cold_penalty < 0) {
       items.push({
@@ -760,17 +863,21 @@ export default function App() {
         url: AFFILIATE_LINKS.heatedJacket,
       });
     }
-    if (
-      hasShopIssue ||
-      rink.pro_shop_status.toLowerCase().includes('no pro shop') ||
-      rink.pro_shop_status.toLowerCase().includes('no sharpening')
-    ) {
+    if (hasShopIssue || serviceTier <= 1) {
       items.push({
         badge: 'NO ON-SITE SHARPENING / SHOP',
         title: 'Pack Spare Tape, Waxed Laces & Edge Care',
         reason: 'Pro shop or sharpening unavailable at this facility. Stock your bag before leaving home.',
         cta: 'Stock Up at Pure Hockey',
         url: AFFILIATE_LINKS.pureHockeyTapeLaces,
+      });
+    } else if (serviceTier === 2) {
+      items.push({
+        badge: 'SHARPENING & ESSENTIALS ONLY',
+        title: 'Pack Backup Sticks & Protective Gear',
+        reason: 'On-site counter handles sharpening, tape, laces & blades—but does not stock full gear, skates, or sticks.',
+        cta: 'Browse Backup Sticks at Pure Hockey',
+        url: AFFILIATE_LINKS.pureHockeySticksGear,
       });
     }
     if (
@@ -1242,7 +1349,7 @@ export default function App() {
                 { id: 'ALL', label: 'All Rinks' },
                 { id: 'WATCHED', label: `⭐ Watched (${watchedIds.length})` },
                 { id: 'HOME', label: '🏠 Home Rinks' },
-                { id: 'SHOP', label: '🏒 Pro Shop' },
+                { id: 'SHOP', label: '🏒 Shop / Sharpening' },
                 { id: 'BAR', label: '🍔 Bar/Cafe' },
                 { id: 'COLD', label: '🥶 Cold Alert' },
               ].map((chip) => (
@@ -1290,6 +1397,8 @@ export default function App() {
               const rinkAlerts = alerts.filter((a) => a.rink_id === rink.id);
               const hasPermFlag = rinkAlerts.some((a) => parseAlertMeta(a).isPermanent);
               const isWatched = watchedIds.includes(rink.id);
+              const serviceTier = getHockeyServiceTier(rink);
+              const conditionScore = getBlendedConditionRating(rink);
 
               return (
                 <div
@@ -1459,26 +1568,48 @@ export default function App() {
                     >
                       {rink.inside_temp_rating}
                     </span>
+
+                    {/* 4-Tier Hockey Services Pill */}
                     <span
                       className={`px-3 py-1 rounded-full border ${
-                        isLight
+                        serviceTier === 3
+                          ? isLight
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            : 'bg-emerald-400/15 text-emerald-300 border-emerald-400/25'
+                          : serviceTier === 2
+                          ? isLight
+                            ? 'bg-sky-50 text-sky-800 border-sky-200'
+                            : 'bg-sky-400/15 text-sky-300 border-sky-400/25'
+                          : isLight
                           ? 'bg-slate-100 text-slate-700 border-slate-200/80'
                           : 'bg-[#242830] text-zinc-300 border-white/[0.06]'
                       }`}
                     >
-                      🏒 {rink.pro_shop_status.split('(')[0].trim()}
+                      🏒{' '}
+                      {serviceTier === 3
+                        ? 'Full Pro Shop'
+                        : serviceTier === 2
+                        ? 'Sharpening & Essentials'
+                        : serviceTier === 1
+                        ? '24/7 Gear Vending Only'
+                        : 'No Pro Shop / Sharpening'}
                     </span>
-                    {rink.has_hockey_vending && (
-                      <span
-                        className={`px-3 py-1 rounded-full border ${
-                          isLight
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : 'bg-emerald-400/15 text-emerald-300 border-emerald-400/25'
-                        }`}
-                      >
-                        24/7 Gear Vending
-                      </span>
-                    )}
+
+                    {/* Facility Condition & Upkeep Score Pill */}
+                    <span
+                      className={`px-3 py-1 rounded-full border ${
+                        conditionScore >= 3.8
+                          ? isLight
+                            ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                            : 'bg-indigo-400/15 text-indigo-300 border-indigo-400/25'
+                          : isLight
+                          ? 'bg-slate-100 text-slate-700 border-slate-200/80'
+                          : 'bg-[#242830] text-zinc-300 border-white/[0.06]'
+                      }`}
+                    >
+                      ✨ Upkeep {conditionScore.toFixed(1)}/5
+                    </span>
+
                     <span
                       className={`px-3 py-1 rounded-full border ${
                         isLight
@@ -1488,6 +1619,7 @@ export default function App() {
                     >
                       📺 {rink.streaming_provider}
                     </span>
+
                     {rink.corner_padded_mats && (
                       <span
                         className={`px-3 py-1 rounded-full border ${
@@ -1857,6 +1989,71 @@ export default function App() {
                 </div>
               </div>
             )}
+
+            {/* ================================================================= */}
+            {/* CROWDSOURCED FACILITY CONDITION & UPKEEP (25% PILLAR BLEND)       */}
+            {/* ================================================================= */}
+            <div
+              className={`rounded-[24px] p-4 space-y-2.5 border ${
+                isLight
+                  ? 'bg-white border-slate-200 shadow-sm'
+                  : 'bg-[#0F1114] border-white/[0.07] shadow-[inset_0_2px_8px_rgba(0,0,0,0.6)]'
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3
+                    className={`text-xs font-extrabold uppercase tracking-wider flex items-center gap-1.5 ${
+                      isLight ? 'text-indigo-700' : 'text-indigo-300'
+                    }`}
+                  >
+                    <Building2 className="w-4 h-4" /> Facility Condition & Aesthetics
+                  </h3>
+                  <p className={`text-[11px] mt-0.5 ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
+                    Cleanliness, locker room upkeep & modernization ({selectedRink.condition_rating_count || 0}{' '}
+                    parent {(selectedRink.condition_rating_count || 0) === 1 ? 'rating' : 'ratings'})
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span
+                    className={`font-mono-score text-sm font-extrabold px-3 py-1 rounded-full border ${
+                      isLight
+                        ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                        : 'bg-indigo-400/15 text-indigo-300 border-indigo-400/30'
+                    }`}
+                  >
+                    {getBlendedConditionRating(selectedRink).toFixed(1)} / 5.0
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-5 gap-1.5 pt-1">
+                {[1, 2, 3, 4, 5].map((num) => {
+                  const userVoted = conditionVotes[selectedRink.id] === num;
+                  return (
+                    <button
+                      key={num}
+                      disabled={busyAction}
+                      onClick={() => handleRateCondition(selectedRink, num)}
+                      className={`py-2 px-1 rounded-xl border text-center transition active:scale-95 ${
+                        userVoted
+                          ? isLight
+                            ? 'bg-indigo-600 text-white border-indigo-600 font-extrabold shadow-sm'
+                            : 'bg-indigo-500 text-white border-indigo-400 font-extrabold shadow-md'
+                          : isLight
+                          ? 'bg-slate-50 hover:bg-indigo-50 text-slate-700 border-slate-200 font-bold'
+                          : 'bg-[#1A1D24] hover:bg-[#232732] text-zinc-300 border-white/[0.08] font-bold'
+                      }`}
+                    >
+                      <div className="font-mono-score text-xs">{num}★</div>
+                      <div className="text-[9px] leading-tight opacity-85 truncate mt-0.5">
+                        {num === 1 ? 'Dump' : num === 3 ? 'Average' : num === 5 ? 'Modern' : '\u00A0'}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
             {/* ================================================================= */}
             {/* WAZE-STYLE 6-CATEGORY REPORT & UPDATE ENGINE                      */}
