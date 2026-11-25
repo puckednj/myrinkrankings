@@ -124,6 +124,27 @@ const COOLDOWN_STORAGE_KEY = 'mrr_waze_cooldowns_v2';
 const WATCHED_STORAGE_KEY = 'mrr_watched_rinks_v1';
 const THEME_STORAGE_KEY = 'mrr_theme_mode_v1';
 
+// Format regulation + mini rink counts and total sheets in the building
+function formatMainCardSheets(rink) {
+  const notes = (rink.sheet_temp_notes || '').toLowerCase();
+  const regLabel = `${rink.sheets} ${rink.sheets === 1 ? 'Sheet' : 'Sheets'}`;
+  let miniCount = 0;
+
+  const miniMatch = notes.match(/\+\s*(\d+)\s*(?:studio\/)?mini/);
+  if (miniMatch) {
+    miniCount = Number(miniMatch[1]);
+  } else if (notes.includes('gaudreau') || notes.includes('mini')) {
+    miniCount = 1;
+  }
+
+  if (miniCount > 0) {
+    const total = (rink.sheets || 1) + miniCount;
+    const miniLabel = `${miniCount} ${miniCount === 1 ? 'Mini Rink' : 'Mini Rinks'}`;
+    return `${regLabel} + ${miniLabel} (${total} Total)`;
+  }
+  return regLabel;
+}
+
 // Encode & decode metadata inside `rink_alerts.message` so zero DB migrations are needed
 function encodeAlertMessage(cleanLabel, ttlTag, confirmations = 1) {
   return `${cleanLabel} [${ttlTag}] · ${confirmations} ${confirmations === 1 ? 'parent' : 'parents'}`;
@@ -1349,8 +1370,10 @@ export default function App() {
                             </span>
                           )}
                         </div>
+
+                        {/* Line 1: Location */}
                         <p
-                          className={`text-xs mt-1 flex flex-wrap items-center gap-1.5 font-medium ${
+                          className={`text-xs mt-1 flex items-center gap-1.5 font-medium ${
                             isLight ? 'text-slate-500' : 'text-zinc-400'
                           }`}
                         >
@@ -1360,14 +1383,22 @@ export default function App() {
                             }`}
                           />
                           <span>
-                            {rink.city}, {rink.state} • {rink.sheets}{' '}
-                            {rink.sheets === 1 ? 'Sheet' : 'Sheets'}
-                            {rink.sheet_temp_notes &&
-                            (rink.sheet_temp_notes.toLowerCase().includes('mini') ||
-                              rink.sheet_temp_notes.toLowerCase().includes('gaudreau'))
-                              ? ' + Mini Rink'
-                              : ''}
+                            {rink.city}, {rink.state}
                           </span>
+                        </p>
+
+                        {/* Line 2: Ice Sheets & Total Building Capacity */}
+                        <p
+                          className={`text-xs mt-0.5 flex items-center gap-1.5 font-semibold ${
+                            isLight ? 'text-sky-700' : 'text-cyan-300/90'
+                          }`}
+                        >
+                          <Layers
+                            className={`w-3.5 h-3.5 shrink-0 ${
+                              isLight ? 'text-sky-600' : 'text-cyan-400'
+                            }`}
+                          />
+                          <span>{formatMainCardSheets(rink)}</span>
                         </p>
                       </div>
                     </div>
