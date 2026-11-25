@@ -134,6 +134,61 @@ const CONDITION_VOTE_STORAGE_KEY = 'mrr_condition_votes_v1';
 const WATCHED_STORAGE_KEY = 'mrr_watched_rinks_v1';
 const THEME_STORAGE_KEY = 'mrr_theme_mode_v1';
 
+// Resize & compress large phone photos in-browser before uploading to Supabase
+function compressExteriorImage(file, maxWidth = 1400, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+
+      let targetWidth = img.width;
+      let targetHeight = img.height;
+
+      if (targetWidth > maxWidth) {
+        const scale = maxWidth / targetWidth;
+        targetWidth = Math.round(targetWidth * scale);
+        targetHeight = Math.round(targetHeight * scale);
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Could not initialize image compressor.'));
+        return;
+      }
+
+      // White background fill in case a transparent PNG is uploaded
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, targetWidth, targetHeight);
+      ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            reject(new Error('Image compression failed.'));
+            return;
+          }
+          resolve(blob);
+        },
+        'image/jpeg',
+        quality
+      );
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Unsupported image format. Please use JPG, PNG, or WebP.'));
+    };
+
+    img.src = objectUrl;
+  });
+}
+
 // Classify 4-Tier Hockey Services (0 = None, 1 = Vending, 2 = Sharpening & Essentials, 3 = Full Pro Shop)
 function getHockeyServiceTier(rink) {
   if (rink?.pro_shop_tier !== null && rink?.pro_shop_tier !== undefined) {
@@ -789,7 +844,7 @@ export default function App() {
   };
 
   // ============================================================================
-  // FOUNDER ADMIN: 1-TAP EXTERIOR PHOTO UPLOAD TO SUPABASE STORAGE
+  // FOUNDER ADMIN: AUTO-COMPRESS & UPLOAD EXTERIOR PHOTO TO SUPABASE STORAGE
   // ============================================================================
   const handleAdminUploadExterior = async (e) => {
     const file = e.target.files?.[0];
@@ -797,12 +852,15 @@ export default function App() {
 
     setUploadingExterior(true);
     try {
-      const ext = file.name.split('.').pop() || 'jpg';
-      const filePath = `rink-${adminPhotoRinkId}-${Date.now()}.${ext}`;
+      const compressedBlob = await compressExteriorImage(file, 1400, 0.82);
+      const filePath = `rink-${adminPhotoRinkId}-${Date.now()}.jpg`;
 
       const { error: uploadErr } = await supabase.storage
         .from('rink-exteriors')
-        .upload(filePath, file, { upsert: true });
+        .upload(filePath, compressedBlob, {
+          contentType: 'image/jpeg',
+          upsert: true,
+        });
       if (uploadErr) throw uploadErr;
 
       const { data: pubData } = supabase.storage
@@ -818,7 +876,8 @@ export default function App() {
         .eq('id', adminPhotoRinkId);
       if (dbErr) throw dbErr;
 
-      showToast('Exterior photo saved and live on rink card!');
+      const kbSize = Math.max(1, Math.round(compressedBlob.size / 1024));
+      showToast(`Optimized (${kbSize} KB) & published exterior photo!`);
       await fetchData();
     } catch (err) {
       showToast('Photo upload failed: ' + err.message);
@@ -2709,13 +2768,18 @@ export default function App() {
                     isLight ? 'bg-sky-50/70 border-sky-200' : 'bg-[#0F1114] border-cyan-400/25'
                   }`}
                 >
-                  <h4
-                    className={`font-extrabold uppercase tracking-wider ${
-                      isLight ? 'text-sky-800' : 'text-cyan-300'
-                    }`}
-                  >
-                    Upload / Replace Rink Exterior Photo
-                  </h4>
+                  <div className="flex items-center justify-between gap-2">
+                    <h4
+                      className={`font-extrabold uppercase tracking-wider ${
+                        isLight ? 'text-sky-800' : 'text-cyan-300'
+                      }`}
+                    >
+                      Upload / Replace Rink Exterior Photo
+                    </h4>
+                    <span className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
+                      Auto-compressed
+                    </span>
+                  </div>
                   <select
                     value={adminPhotoRinkId}
                     onChange={(e) => setAdminPhotoRinkId(e.target.value)}
@@ -2746,8 +2810,8 @@ export default function App() {
                       }`}
                     >
                       {uploadingExterior
-                        ? 'Uploading Photo...'
-                        : 'Choose Exterior Photo (JPG / PNG / WebP)'}
+                        ? 'Compressing & Uploading...'
+                        : 'Choose Exterior Photo (Auto-Resizes)'}
                       <input
                         type="file"
                         accept="image/*"
