@@ -865,7 +865,7 @@ export default function App() {
         <div className="max-w-4xl mx-auto px-4 py-3.5 flex items-center justify-between gap-2.5">
           <div className="flex items-center gap-3 min-w-0">
             <div
-              className={`w-12 h-10 rounded-2xl bg-gradient-to-br from-cyan-300 via-cyan-400 to-sky-500 flex items-center justify-center px-1 py-0.5 shrink-0 ${
+              className={`w-12 h-10 rounded-2xl bg-gradient-to-br from-cyan-300 via-cyan-400 to-sky-500 flex items-center justify-center pl-1 pr-1.5 py-1.5 shrink-0 ${
                 isLight
                   ? 'shadow-[0_6px_16px_rgba(14,165,233,0.28)]'
                   : 'shadow-[0_8px_24px_rgba(34,211,238,0.35),inset_0_1px_0_0_rgba(255,255,255,0.65)]'
