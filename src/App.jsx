@@ -1643,7 +1643,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* 2026 Glowing Tonal Score Pill + Consistent Watch Rink Action */}
+                    {/* 2026 Glowing Tonal Score Pill + Compact Right-Aligned Watch Action */}
                     <div className="text-right shrink-0 flex flex-col items-end">
                       <div
                         className={`font-mono-score inline-flex items-baseline gap-1 px-3.5 py-1.5 rounded-2xl border font-extrabold text-xl ${theme.badge}`}
@@ -1654,7 +1654,7 @@ export default function App() {
 
                       {delta !== 0 && (
                         <div
-                          className={`font-mono-score text-[11px] font-extrabold mt-1.5 ${
+                          className={`font-mono-score text-[11px] font-extrabold mt-1 ${
                             delta < 0
                               ? isLight
                                 ? 'text-rose-600'
@@ -1671,18 +1671,18 @@ export default function App() {
                       <button
                         onClick={(e) => toggleWatchRink(e, rink)}
                         title={isWatched ? 'Remove from Weekend Rinks' : 'Watch Rink for Weekend'}
-                        className={`mt-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full border inline-flex items-center gap-1 transition active:scale-95 ${
+                        className={`mt-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full border inline-flex items-center gap-1 transition active:scale-95 ${
                           isWatched
                             ? isLight
-                              ? 'bg-amber-100 text-amber-800 border-amber-300 shadow-xs'
+                              ? 'bg-amber-100 text-amber-800 border-amber-300'
                               : 'bg-amber-400/20 text-amber-200 border-amber-400/40'
                             : isLight
-                            ? 'bg-slate-50 hover:bg-amber-50 text-slate-600 hover:text-amber-800 border-slate-200 hover:border-amber-300'
-                            : 'bg-[#252932] hover:bg-amber-400/10 text-zinc-300 hover:text-amber-200 border-white/[0.1] hover:border-amber-400/35'
+                            ? 'bg-slate-50 hover:bg-amber-50 text-slate-500 hover:text-amber-800 border-slate-200 hover:border-amber-300'
+                            : 'bg-[#20242C] hover:bg-amber-400/10 text-zinc-400 hover:text-amber-200 border-white/[0.08] hover:border-amber-400/35'
                         }`}
                       >
                         <Star
-                          className={`w-3 h-3 shrink-0 ${
+                          className={`w-2.5 h-2.5 shrink-0 ${
                             isWatched ? 'fill-amber-400 text-amber-400' : ''
                           }`}
                         />
