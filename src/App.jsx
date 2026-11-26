@@ -2681,7 +2681,7 @@ export default function App() {
                   </div>
                   <button
                     onClick={() => setShowHoursModal(true)}
-                    className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-extrabold border transition active:scale-95 ${
+                    className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border transition active:scale-95 ${
                       hasAnyHours(selectedRink)
                         ? isLight
                           ? 'bg-sky-50 hover:bg-sky-100 text-sky-800 border-sky-300'
@@ -2691,7 +2691,7 @@ export default function App() {
                         : 'bg-[#252932] hover:bg-[#2F3440] text-zinc-300 border-white/[0.1]'
                     }`}
                   >
-                    <Clock className="w-3 h-3" />
+                    <Clock className="w-2.5 h-2.5" />
                     <span>Hours</span>
                   </button>
                 </div>
