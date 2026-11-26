@@ -46,7 +46,7 @@ const WAZE_CATEGORIES = [
   {
     id: 'Temperature',
     title: 'Temp & Viewing',
-    subtitle: 'Heaters, foggy glass, seating',
+    subtitle: 'Heaters, foggy glass, corner mats',
     icon: ThermometerSnowflake,
     accentDark: 'text-sky-300 border-sky-400/25 bg-sky-400/10',
     accentLight: 'text-sky-700 border-sky-500/30 bg-sky-50',
@@ -55,6 +55,8 @@ const WAZE_CATEGORIES = [
       { id: 'temp_glass', label: 'Foggy / Scratched Viewing Glass', impact: -2, type: 'issue', ttlHours: 48 },
       { id: 'temp_bleachers', label: 'Standing Room / Bleachers Full', impact: 0, type: 'info', ttlHours: 4 },
       { id: 'temp_warm', label: 'Warm Viewing / Heaters On', impact: 2, type: 'positive', ttlHours: 48 },
+      { id: 'fact_corner_mats_yes', label: 'Padded Mats in Spectator Corners (Excl. Zamboni)', impact: 0, type: 'facility_fact', matDelta: 1 },
+      { id: 'fact_corner_mats_no', label: 'Bare Concrete in Corners (Walkways Only)', impact: 0, type: 'facility_fact', matDelta: -1 },
     ],
   },
   {
@@ -128,6 +130,7 @@ const CONDITION_LABELS = {
   5: 'Modern & Spotless',
 };
 
+const CORNER_MATS_THRESHOLD = 3; // Number of parent confirmations required to verify corner mats
 const COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 hours per rink + option
 const COOLDOWN_STORAGE_KEY = 'mrr_waze_cooldowns_v2';
 const CONDITION_VOTE_STORAGE_KEY = 'mrr_condition_votes_v1';
@@ -238,7 +241,7 @@ function formatMainCardSheets(rink) {
   return regLabel;
 }
 
-// Encode & decode metadata inside `rink_alerts.message` so zero DB migrations are needed
+// Encode & decode metadata inside `rink_alerts.message`
 function encodeAlertMessage(cleanLabel, ttlTag, confirmations = 1) {
   return `${cleanLabel} [${ttlTag}] · ${confirmations} ${confirmations === 1 ? 'parent' : 'parents'}`;
 }
@@ -581,7 +584,7 @@ export default function App() {
   };
 
   // ============================================================================
-  // WAZE-STYLE REPORT HANDLER (Single-Deduction Lock + Confirmation Increment)
+  // WAZE-STYLE REPORT HANDLER (Facility Facts + Single-Deduction Alert Lock)
   // ============================================================================
   const handleWazeOptionTap = async (rink, categoryObj, option) => {
     if (busyAction) return;
@@ -589,6 +592,51 @@ export default function App() {
     const minsLeft = getRemainingCooldownMins(rink.id, option.id);
     if (minsLeft > 0) {
       showToast(`You already logged this update. Available again in ${minsLeft}m.`);
+      return;
+    }
+
+    // Handle persistent crowdsourced facility facts (e.g., Corner Standing Mats)
+    if (option.type === 'facility_fact') {
+      setBusyAction(true);
+      try {
+        const currentConfirms = Number(rink.corner_mats_confirmations) || 0;
+        const nextConfirms = Math.max(0, currentConfirms + (option.matDelta || 0));
+        const isNowVerified = nextConfirms >= CORNER_MATS_THRESHOLD;
+
+        const { error: factErr } = await supabase
+          .from('rinks')
+          .update({
+            corner_mats_confirmations: nextConfirms,
+            corner_padded_mats: isNowVerified,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', rink.id);
+
+        if (factErr) throw factErr;
+
+        recordCooldown(rink.id, option.id);
+        setActiveCategory(null);
+
+        if (option.matDelta > 0) {
+          showToast(
+            isNowVerified
+              ? `✓ Corner Mats verified (${nextConfirms}/${CORNER_MATS_THRESHOLD} parents)! Badge live on card.`
+              : `Logged! (${nextConfirms}/${CORNER_MATS_THRESHOLD} confirmations needed to verify Corner Mats badge)`
+          );
+        } else {
+          showToast(
+            isNowVerified
+              ? `Logged bare concrete report (${nextConfirms} confirmations remaining).`
+              : `Logged bare concrete corners (${nextConfirms}/${CORNER_MATS_THRESHOLD} confirmations).`
+          );
+        }
+
+        await fetchData();
+      } catch (err) {
+        showToast('Error updating facility info: ' + err.message);
+      } finally {
+        setBusyAction(false);
+      }
       return;
     }
 
@@ -804,6 +852,8 @@ export default function App() {
           state: pendingItem.state || 'NJ',
           sheets: sheetsCount,
           has_mini_rink: false,
+          corner_padded_mats: false,
+          corner_mats_confirmations: 0,
           condition_tier: 3,
           pro_shop_tier: 2,
           hospitality_tier: 0,
@@ -1758,6 +1808,7 @@ export default function App() {
                       📺 {rink.streaming_provider}
                     </span>
 
+                    {/* Only display Corner Mats once 3+ parents verify spectator corners */}
                     {rink.corner_padded_mats && (
                       <span
                         className={`px-3 py-1 rounded-full border ${
@@ -1766,7 +1817,7 @@ export default function App() {
                             : 'bg-cyan-400/12 text-cyan-300 border-cyan-400/20'
                         }`}
                       >
-                        Corner Mats
+                        ✓ Corner Mats
                       </span>
                     )}
                   </div>
@@ -2410,11 +2461,14 @@ export default function App() {
                           : isLight
                           ? 'text-rose-600'
                           : 'text-rose-400';
-                      } else if (opt.type === 'info') {
+                      } else if (opt.type === 'info' || opt.type === 'facility_fact') {
                         pillStyle = isLight
                           ? 'bg-sky-50/80 hover:bg-sky-100/80 border-sky-200 text-sky-950'
                           : 'bg-[#182026] hover:bg-[#1E2932] border-sky-400/25 text-sky-100';
-                        badgeText = '0 pts · Info Tag';
+                        badgeText =
+                          opt.type === 'facility_fact'
+                            ? `${Number(selectedRink.corner_mats_confirmations) || 0}/${CORNER_MATS_THRESHOLD} Verified`
+                            : '0 pts · Info Tag';
                         badgeColor = isLight ? 'text-sky-700' : 'text-sky-300';
                       } else if (opt.type === 'positive') {
                         pillStyle = isLight
@@ -2444,7 +2498,7 @@ export default function App() {
                           }`}
                         >
                           <span className="flex items-center gap-2">
-                            {opt.type === 'info' && (
+                            {(opt.type === 'info' || opt.type === 'facility_fact') && (
                               <Info
                                 className={`w-3.5 h-3.5 shrink-0 ${
                                   isLight ? 'text-sky-600' : 'text-sky-400'
@@ -2497,7 +2551,9 @@ export default function App() {
                 <p>
                   • Corner Standing Mats:{' '}
                   <strong className={isLight ? 'text-slate-950' : 'text-white'}>
-                    {selectedRink.corner_padded_mats ? 'Yes (Padded)' : 'Bare Concrete'}
+                    {selectedRink.corner_padded_mats
+                      ? `Verified (${selectedRink.corner_mats_confirmations || CORNER_MATS_THRESHOLD}+ parents · Excl. Zamboni)`
+                      : `Unverified / Walkways Only (${selectedRink.corner_mats_confirmations || 0}/${CORNER_MATS_THRESHOLD})`}
                   </strong>
                 </p>
               </div>
