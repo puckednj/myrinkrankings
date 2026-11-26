@@ -3,7 +3,7 @@ import { supabase } from './supabaseClient';
 import {
   Search, Snowflake, ShoppingBag, Plus, X, Flame,
   ShieldCheck, Eye, Footprints, ExternalLink, Sparkles,
-  Mail, MapPin, RefreshCw, CheckCircle2, ArrowUpRight,
+  Mail, MapPin, RefreshCw, CheckCircle2,
   Radio, Layers, ThermometerSnowflake, AlertCircle, RotateCcw,
   Clock, Star, Info, Ban, Lock, ChevronLeft, Users, Tv, Car,
   Sun, Moon, Building2
@@ -162,7 +162,6 @@ function compressExteriorImage(file, maxWidth = 1400, quality = 0.82) {
         return;
       }
 
-      // White background fill in case a transparent PNG is uploaded
       ctx.fillStyle = '#FFFFFF';
       ctx.fillRect(0, 0, targetWidth, targetHeight);
       ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
@@ -1558,7 +1557,7 @@ export default function App() {
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-3.5">
+                    <div className="flex items-start gap-3.5 min-w-0">
                       {/* Rank Pill */}
                       <div
                         className={`font-mono-score w-10 h-10 rounded-2xl border flex items-center justify-center font-extrabold text-sm shrink-0 mt-0.5 ${theme.rank}`}
@@ -1566,7 +1565,7 @@ export default function App() {
                         #{idx + 1}
                       </div>
 
-                      <div>
+                      <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <h2
                             className={`font-extrabold text-base sm:text-lg transition-colors ${
@@ -1577,25 +1576,6 @@ export default function App() {
                           >
                             {rink.name}
                           </h2>
-                          <button
-                            onClick={(e) => toggleWatchRink(e, rink)}
-                            title={isWatched ? 'Remove from Weekend Rinks' : 'Watch for Weekend'}
-                            className={`p-1 rounded-full border transition ${
-                              isWatched
-                                ? isLight
-                                  ? 'bg-amber-100 border-amber-300 text-amber-600'
-                                  : 'bg-amber-400/15 border-amber-400/35 text-amber-300'
-                                : isLight
-                                ? 'bg-slate-100 border-slate-200 text-slate-400 hover:text-amber-500'
-                                : 'bg-white/[0.04] border-white/[0.08] text-zinc-400 hover:text-amber-300'
-                            }`}
-                          >
-                            <Star
-                              className={`w-3.5 h-3.5 ${
-                                isWatched ? 'fill-amber-400 text-amber-400' : ''
-                              }`}
-                            />
-                          </button>
                           {rink.is_home_rink && (
                             <span
                               className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
@@ -1663,7 +1643,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* 2026 Glowing Tonal Score Pill */}
+                    {/* 2026 Glowing Tonal Score Pill + Consistent Watch Rink Action */}
                     <div className="text-right shrink-0 flex flex-col items-end">
                       <div
                         className={`font-mono-score inline-flex items-baseline gap-1 px-3.5 py-1.5 rounded-2xl border font-extrabold text-xl ${theme.badge}`}
@@ -1671,7 +1651,8 @@ export default function App() {
                         <span>{rink.live_score}</span>
                         <span className="text-[11px] font-bold opacity-70">/100</span>
                       </div>
-                      {delta !== 0 ? (
+
+                      {delta !== 0 && (
                         <div
                           className={`font-mono-score text-[11px] font-extrabold mt-1.5 ${
                             delta < 0
@@ -1685,18 +1666,28 @@ export default function App() {
                         >
                           {delta > 0 ? `+${delta}` : delta} live pulse
                         </div>
-                      ) : (
-                        <div
-                          className={`text-[11px] font-semibold mt-1.5 inline-flex items-center gap-0.5 transition-colors ${
-                            isLight
-                              ? 'text-slate-500 group-hover:text-sky-700'
-                              : 'text-zinc-400 group-hover:text-cyan-300'
-                          }`}
-                        >
-                          <span>Inspect</span>
-                          <ArrowUpRight className="w-3.5 h-3.5" />
-                        </div>
                       )}
+
+                      <button
+                        onClick={(e) => toggleWatchRink(e, rink)}
+                        title={isWatched ? 'Remove from Weekend Rinks' : 'Watch Rink for Weekend'}
+                        className={`mt-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full border inline-flex items-center gap-1 transition active:scale-95 ${
+                          isWatched
+                            ? isLight
+                              ? 'bg-amber-100 text-amber-800 border-amber-300 shadow-xs'
+                              : 'bg-amber-400/20 text-amber-200 border-amber-400/40'
+                            : isLight
+                            ? 'bg-slate-50 hover:bg-amber-50 text-slate-600 hover:text-amber-800 border-slate-200 hover:border-amber-300'
+                            : 'bg-[#252932] hover:bg-amber-400/10 text-zinc-300 hover:text-amber-200 border-white/[0.1] hover:border-amber-400/35'
+                        }`}
+                      >
+                        <Star
+                          className={`w-3 h-3 shrink-0 ${
+                            isWatched ? 'fill-amber-400 text-amber-400' : ''
+                          }`}
+                        />
+                        <span>{isWatched ? 'Watching' : 'Watch Rink'}</span>
+                      </button>
                     </div>
                   </div>
 
