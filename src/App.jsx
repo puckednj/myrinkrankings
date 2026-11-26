@@ -130,8 +130,8 @@ const CONDITION_LABELS = {
   5: 'Modern & Spotless',
 };
 
-const CORNER_MATS_THRESHOLD = 3; // Number of parent confirmations required to verify corner mats
-const COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 hours per rink + option
+const CORNER_MATS_THRESHOLD = 3;
+const COOLDOWN_MS = 2 * 60 * 60 * 1000;
 const COOLDOWN_STORAGE_KEY = 'mrr_waze_cooldowns_v2';
 const CONDITION_VOTE_STORAGE_KEY = 'mrr_condition_votes_v1';
 const WATCHED_STORAGE_KEY = 'mrr_watched_rinks_v1';
@@ -241,6 +241,18 @@ function formatMainCardSheets(rink) {
   return regLabel;
 }
 
+// Helper to check if a rink has any posted amenity/building hours
+function hasAnyHours(rink) {
+  const h = rink?.amenity_hours;
+  if (!h || typeof h !== 'object') return false;
+  return Boolean(
+    (h.building && h.building.trim()) ||
+    (h.pro_shop && h.pro_shop.trim()) ||
+    (h.snack_bar && h.snack_bar.trim()) ||
+    (h.bar_restaurant && h.bar_restaurant.trim())
+  );
+}
+
 // Encode & decode metadata inside `rink_alerts.message`
 function encodeAlertMessage(cleanLabel, ttlTag, confirmations = 1) {
   return `${cleanLabel} [${ttlTag}] · ${confirmations} ${confirmations === 1 ? 'parent' : 'parents'}`;
@@ -343,6 +355,7 @@ export default function App() {
 
   // Modals & Waze Submenu State
   const [selectedRink, setSelectedRink] = useState(null);
+  const [showHoursModal, setShowHoursModal] = useState(false);
   const [activeCategory, setActiveCategory] = useState(null);
   const [staffPinPromptAlertId, setStaffPinPromptAlertId] = useState(null);
   const [staffPinInput, setStaffPinInput] = useState('');
@@ -356,6 +369,16 @@ export default function App() {
   const [isAdminUnlocked, setIsAdminUnlocked] = useState(false);
   const [adminPhotoRinkId, setAdminPhotoRinkId] = useState('');
   const [uploadingExterior, setUploadingExterior] = useState(false);
+
+  // Founder Admin Amenity Hours Editor State
+  const [adminHoursRinkId, setAdminHoursRinkId] = useState('');
+  const [adminHoursForm, setAdminHoursForm] = useState({
+    building: '',
+    pro_shop: '',
+    snack_bar: '',
+    bar_restaurant: '',
+  });
+  const [savingHours, setSavingHours] = useState(false);
 
   // Add Rink Form State
   const [newRink, setNewRink] = useState({ name: '', city: '', state: 'NJ', sheets: 1, notes: '' });
@@ -543,7 +566,6 @@ export default function App() {
     const oldBlended = (seed * 5 + oldSum) / (5 + oldCount);
     const newBlended = (seed * 5 + newSum) / (5 + newCount);
 
-    // 3.5 pts per star tier in Pillar 2 (25-pt Facility Condition & Aesthetics pillar)
     const oldPts = Math.round(oldBlended * 3.5);
     const newPts = Math.round(newBlended * 3.5);
     const ptsDelta = newPts - oldPts;
@@ -821,7 +843,6 @@ export default function App() {
         .eq('id', alertItem.id);
       if (aErr) throw aErr;
 
-      // Updating integer tiers fires trg_universal_rink_score automatically in Supabase
       const { error: rErr } = await supabase
         .from('rinks')
         .update(rinkUpdates)
@@ -933,6 +954,59 @@ export default function App() {
     } finally {
       setUploadingExterior(false);
       e.target.value = '';
+    }
+  };
+
+  // ============================================================================
+  // FOUNDER ADMIN: SAVE RINK & AMENITY HOURS
+  // ============================================================================
+  const handleSelectAdminHoursRink = (rinkId) => {
+    setAdminHoursRinkId(rinkId);
+    const target = rinks.find((r) => String(r.id) === String(rinkId));
+    const existing = target?.amenity_hours || {};
+    setAdminHoursForm({
+      building: existing.building || '',
+      pro_shop: existing.pro_shop || '',
+      snack_bar: existing.snack_bar || '',
+      bar_restaurant: existing.bar_restaurant || '',
+    });
+  };
+
+  const handleAdminSaveHours = async (e) => {
+    e.preventDefault();
+    if (!adminHoursRinkId || savingHours) return;
+
+    setSavingHours(true);
+    try {
+      const monthYear = new Date().toLocaleDateString('en-US', {
+        month: 'short',
+        year: 'numeric',
+      });
+
+      const payload = {
+        building: adminHoursForm.building.trim(),
+        pro_shop: adminHoursForm.pro_shop.trim(),
+        snack_bar: adminHoursForm.snack_bar.trim(),
+        bar_restaurant: adminHoursForm.bar_restaurant.trim(),
+        updated_at: monthYear,
+      };
+
+      const { error } = await supabase
+        .from('rinks')
+        .update({
+          amenity_hours: payload,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', adminHoursRinkId);
+
+      if (error) throw error;
+
+      showToast('Amenity & rink hours saved!');
+      await fetchData();
+    } catch (err) {
+      showToast('Could not save hours: ' + err.message);
+    } finally {
+      setSavingHours(false);
     }
   };
 
@@ -1122,6 +1196,7 @@ export default function App() {
 
   const openRinkSheet = (rink) => {
     setSelectedRink(rink);
+    setShowHoursModal(false);
     setActiveCategory(null);
     setStaffPinPromptAlertId(null);
     setStaffPinInput('');
@@ -2580,6 +2655,7 @@ export default function App() {
                 <p>• Monitors: {selectedRink.locker_room_monitors}</p>
               </div>
 
+              {/* Pro Shop, 24/7 Vending & Food + Clean Hours Button */}
               <div
                 className={`rounded-[24px] p-4 space-y-1.5 border ${
                   isLight
@@ -2587,12 +2663,30 @@ export default function App() {
                     : 'bg-gradient-to-b from-[#1B1E24] to-[#15171C] border-white/[0.07] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] text-zinc-300'
                 }`}
               >
-                <div
-                  className={`font-extrabold flex items-center gap-1.5 text-sm ${
-                    isLight ? 'text-sky-700' : 'text-cyan-300'
-                  }`}
-                >
-                  <ShoppingBag className="w-4 h-4" /> Pro Shop, 24/7 Vending & Food
+                <div className="flex items-center justify-between gap-2">
+                  <div
+                    className={`font-extrabold flex items-center gap-1.5 text-sm ${
+                      isLight ? 'text-sky-700' : 'text-cyan-300'
+                    }`}
+                  >
+                    <ShoppingBag className="w-4 h-4 shrink-0" />
+                    <span>Pro Shop, 24/7 Vending & Food</span>
+                  </div>
+                  <button
+                    onClick={() => setShowHoursModal(true)}
+                    className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-extrabold border transition active:scale-95 ${
+                      hasAnyHours(selectedRink)
+                        ? isLight
+                          ? 'bg-sky-50 hover:bg-sky-100 text-sky-800 border-sky-300'
+                          : 'bg-cyan-400/15 hover:bg-cyan-400/25 text-cyan-300 border-cyan-400/35'
+                        : isLight
+                        ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                        : 'bg-[#252932] hover:bg-[#2F3440] text-zinc-300 border-white/[0.1]'
+                    }`}
+                  >
+                    <Clock className="w-3 h-3" />
+                    <span>Hours</span>
+                  </button>
                 </div>
                 <p>• Shop: {selectedRink.pro_shop_status}</p>
                 <p>
@@ -2730,7 +2824,164 @@ export default function App() {
       )}
 
       {/* ===================================================================== */}
-      {/* FOUNDER ADMIN MODAL (PIN-Protected Photos, Closures & Rink Queue)     */}
+      {/* FACILITY & AMENITY HOURS POPUP MODAL                                  */}
+      {/* ===================================================================== */}
+      {selectedRink && showHoursModal && (
+        <div
+          onClick={() => setShowHoursModal(false)}
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className={`w-full max-w-md rounded-[30px] p-6 space-y-4 border ${
+              isLight
+                ? 'bg-white border-slate-200 shadow-2xl text-slate-900'
+                : 'bg-gradient-to-b from-[#1E2127] to-[#121418] border-white/[0.14] shadow-2xl text-zinc-100'
+            }`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div
+                  className={`inline-flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wider ${
+                    isLight ? 'text-sky-700' : 'text-cyan-300'
+                  }`}
+                >
+                  <Clock className="w-3.5 h-3.5" /> Facility & Amenity Hours
+                </div>
+                <h3
+                  className={`font-extrabold text-lg mt-0.5 ${
+                    isLight ? 'text-slate-950' : 'text-white'
+                  }`}
+                >
+                  {selectedRink.name}
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowHoursModal(false)}
+                className={`p-2 rounded-full ${
+                  isLight
+                    ? 'bg-slate-100 text-slate-600 hover:text-slate-950'
+                    : 'bg-[#272B33] text-zinc-300 hover:text-white'
+                }`}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {hasAnyHours(selectedRink) ? (
+              <div className="space-y-2.5 text-xs">
+                {[
+                  {
+                    label: 'Building / Rink Doors',
+                    value: selectedRink.amenity_hours?.building,
+                    fallback: 'Typically opens 30–45 min before first ice slot',
+                  },
+                  {
+                    label: 'Pro Shop & Sharpening',
+                    value: selectedRink.amenity_hours?.pro_shop,
+                    fallback: selectedRink.pro_shop_status || 'Hours not listed',
+                  },
+                  {
+                    label: 'Snack Bar / Coffee',
+                    value: selectedRink.amenity_hours?.snack_bar,
+                    fallback: 'Varies by game/tournament schedule',
+                  },
+                  {
+                    label: 'Restaurant / Bar',
+                    value: selectedRink.amenity_hours?.bar_restaurant,
+                    fallback: selectedRink.has_bar_restaurant ? 'Hours not listed' : 'None on-site',
+                  },
+                ].map((row, i) => (
+                  <div
+                    key={i}
+                    className={`rounded-2xl p-3.5 border ${
+                      isLight
+                        ? 'bg-slate-50 border-slate-200/80'
+                        : 'bg-[#0F1114] border-white/[0.07]'
+                    }`}
+                  >
+                    <p
+                      className={`text-[11px] font-extrabold uppercase tracking-wider ${
+                        isLight ? 'text-slate-500' : 'text-zinc-400'
+                      }`}
+                    >
+                      {row.label}
+                    </p>
+                    <p
+                      className={`font-bold text-sm mt-0.5 ${
+                        row.value
+                          ? isLight
+                            ? 'text-slate-950'
+                            : 'text-white'
+                          : isLight
+                          ? 'text-slate-400 font-medium text-xs'
+                          : 'text-zinc-500 font-medium text-xs'
+                      }`}
+                    >
+                      {row.value || row.fallback}
+                    </p>
+                  </div>
+                ))}
+
+                <p className={`text-[11px] pt-1 ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
+                  Hours can shift during tournament weekends & holidays
+                  {selectedRink.amenity_hours?.updated_at
+                    ? ` · Last verified ${selectedRink.amenity_hours.updated_at}`
+                    : ''}
+                  .
+                </p>
+              </div>
+            ) : (
+              <div
+                className={`rounded-2xl p-4 space-y-2 text-xs border ${
+                  isLight
+                    ? 'bg-slate-50 border-slate-200 text-slate-600'
+                    : 'bg-[#0F1114] border-white/[0.07] text-zinc-300'
+                }`}
+              >
+                <p className={`font-extrabold text-sm ${isLight ? 'text-slate-950' : 'text-white'}`}>
+                  Posted hours not added yet
+                </p>
+                <p>
+                  Know when the pro shop, snack bar, or doors open here? Send us a quick note and
+                  we will add it for all hockey families.
+                </p>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <a
+                href={`mailto:myrinkrankings@gmail.com?subject=${encodeURIComponent(
+                  `Rink Hours Update: ${selectedRink.name} (${selectedRink.city}, ${selectedRink.state})`
+                )}&body=${encodeURIComponent(
+                  `Building Doors:\nPro Shop / Sharpening:\nSnack Bar / Coffee:\nRestaurant / Bar:\n`
+                )}`}
+                className={`inline-flex items-center gap-1.5 px-4 py-2.5 rounded-full font-extrabold text-xs transition ${
+                  isLight
+                    ? 'bg-slate-950 hover:bg-slate-800 text-white'
+                    : 'bg-cyan-400 hover:bg-cyan-300 text-zinc-950'
+                }`}
+              >
+                <Mail className="w-3.5 h-3.5" />
+                <span>Submit / Update Hours</span>
+              </a>
+              <button
+                onClick={() => setShowHoursModal(false)}
+                className={`px-4 py-2.5 rounded-full font-bold text-xs ${
+                  isLight
+                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-800'
+                    : 'bg-[#242830] hover:bg-[#2F343E] text-zinc-200'
+                }`}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* FOUNDER ADMIN MODAL (PIN-Protected Photos, Hours, Closures & Queue)   */}
       {/* ===================================================================== */}
       {showAdminPinModal && (
         <div
@@ -2780,8 +3031,8 @@ export default function App() {
                 className="space-y-3 text-sm"
               >
                 <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
-                  Enter your 4-digit Founder PIN to upload exterior photos, review permanent closure
-                  flags, and publish newly submitted rinks.
+                  Enter your 4-digit Founder PIN to upload exterior photos, edit amenity hours,
+                  review permanent closure flags, and publish newly submitted rinks.
                 </p>
                 <input
                   type="password"
@@ -2867,6 +3118,129 @@ export default function App() {
                         className="hidden"
                       />
                     </label>
+                  )}
+                </div>
+
+                {/* Edit Rink & Amenity Hours */}
+                <div
+                  className={`space-y-2.5 border rounded-2xl p-3.5 ${
+                    isLight ? 'bg-indigo-50/60 border-indigo-200' : 'bg-[#0F1114] border-indigo-400/25'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <h4
+                      className={`font-extrabold uppercase tracking-wider ${
+                        isLight ? 'text-indigo-800' : 'text-indigo-300'
+                      }`}
+                    >
+                      Edit Rink & Amenity Hours
+                    </h4>
+                    <span className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
+                      Leave blank if N/A
+                    </span>
+                  </div>
+
+                  <select
+                    value={adminHoursRinkId}
+                    onChange={(e) => handleSelectAdminHoursRink(e.target.value)}
+                    className={`w-full border rounded-xl px-3 py-2 text-xs font-bold focus:outline-none ${
+                      isLight
+                        ? 'bg-white border-slate-300 text-slate-900'
+                        : 'bg-[#181B20] border-white/[0.1] text-white'
+                    }`}
+                  >
+                    <option value="">-- Select a Rink to Set Hours --</option>
+                    {[...rinks]
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {hasAnyHours(r) ? '✓ ' : '○ '} {r.name} ({r.city}, {r.state})
+                        </option>
+                      ))}
+                  </select>
+
+                  {adminHoursRinkId && (
+                    <form onSubmit={handleAdminSaveHours} className="space-y-2 pt-1">
+                      <div>
+                        <label className={`block text-[11px] font-bold mb-1 ${isLight ? 'text-slate-600' : 'text-zinc-400'}`}>
+                          Building / Rink Doors
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g., Opens 30m before first ice · Closes 11 PM"
+                          value={adminHoursForm.building}
+                          onChange={(e) => setAdminHoursForm({ ...adminHoursForm, building: e.target.value })}
+                          className={`w-full border rounded-xl px-3 py-2 text-xs focus:outline-none ${
+                            isLight
+                              ? 'bg-white border-slate-300 text-slate-900'
+                              : 'bg-[#181B20] border-white/[0.1] text-white'
+                          }`}
+                        />
+                      </div>
+
+                      <div>
+                        <label className={`block text-[11px] font-bold mb-1 ${isLight ? 'text-slate-600' : 'text-zinc-400'}`}>
+                          Pro Shop & Sharpening
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g., Mon-Fri 4p-8p · Sat-Sun 8a-6p"
+                          value={adminHoursForm.pro_shop}
+                          onChange={(e) => setAdminHoursForm({ ...adminHoursForm, pro_shop: e.target.value })}
+                          className={`w-full border rounded-xl px-3 py-2 text-xs focus:outline-none ${
+                            isLight
+                              ? 'bg-white border-slate-300 text-slate-900'
+                              : 'bg-[#181B20] border-white/[0.1] text-white'
+                          }`}
+                        />
+                      </div>
+
+                      <div>
+                        <label className={`block text-[11px] font-bold mb-1 ${isLight ? 'text-slate-600' : 'text-zinc-400'}`}>
+                          Snack Bar / Coffee Counter
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g., Sat-Sun 7:30a-5p · Closed Weeknights"
+                          value={adminHoursForm.snack_bar}
+                          onChange={(e) => setAdminHoursForm({ ...adminHoursForm, snack_bar: e.target.value })}
+                          className={`w-full border rounded-xl px-3 py-2 text-xs focus:outline-none ${
+                            isLight
+                              ? 'bg-white border-slate-300 text-slate-900'
+                              : 'bg-[#181B20] border-white/[0.1] text-white'
+                          }`}
+                        />
+                      </div>
+
+                      <div>
+                        <label className={`block text-[11px] font-bold mb-1 ${isLight ? 'text-slate-600' : 'text-zinc-400'}`}>
+                          Restaurant / Bar
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g., Thu-Sun 12p-10p (or None)"
+                          value={adminHoursForm.bar_restaurant}
+                          onChange={(e) => setAdminHoursForm({ ...adminHoursForm, bar_restaurant: e.target.value })}
+                          className={`w-full border rounded-xl px-3 py-2 text-xs focus:outline-none ${
+                            isLight
+                              ? 'bg-white border-slate-300 text-slate-900'
+                              : 'bg-[#181B20] border-white/[0.1] text-white'
+                          }`}
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={savingHours}
+                        className={`w-full py-2.5 px-4 rounded-full font-extrabold text-xs transition ${
+                          isLight
+                            ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                            : 'bg-indigo-500 hover:bg-indigo-400 text-white'
+                        }`}
+                      >
+                        {savingHours ? 'Saving Hours...' : 'Save Rink & Amenity Hours'}
+                      </button>
+                    </form>
                   )}
                 </div>
 
