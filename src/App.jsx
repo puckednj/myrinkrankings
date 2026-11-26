@@ -898,6 +898,13 @@ export default function App() {
           nearby_fallback_notes: '',
           verification_status: 'Verified by Hockey Parents',
           cold_penalty: 0,
+          amenity_hours: {
+            building: 'Opens ~30–45 min before first ice · Closes ~10:30 PM',
+            pro_shop: 'Weekdays ~4p–8p · Weekends ~8a–5p (Varies by schedule)',
+            snack_bar: 'Open weekends & tournament hours',
+            bar_restaurant: 'Check facility details',
+            updated_at: 'Baseline',
+          },
         },
       ]);
       if (insertErr) throw insertErr;
