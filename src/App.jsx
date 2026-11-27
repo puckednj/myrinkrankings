@@ -52,6 +52,14 @@ const SHOP_CHAINS = [
   'Independent',
 ];
 
+const SHOP_TIER_POINTS = { 0: 0, 1: 1, 2: 3, 3: 6 };
+const SHOP_TIER_STATUS_TEXT = {
+  0: 'No Pro Shop / No Sharpening',
+  1: 'No Pro Shop (24/7 Vending Only)',
+  2: 'Sharpening & Essentials Only (Tape, Laces — No Full Gear)',
+  3: 'Full Pro Shop & Skate Sharpening',
+};
+
 // ============================================================================
 // WAZE-STYLE 6 CATEGORIES + STATE-FLIPPING OPTIONS (3h / 24h Auto-Reset)
 // ============================================================================
@@ -113,6 +121,7 @@ const WAZE_CATEGORIES = [
       { id: 'shop_vending_down', stateKey: 'vending', label: '24/7 Gear Vending Empty / Jammed', impact: -2, type: 'issue', ttlHours: 24 },
       { id: 'shop_early_info', stateKey: 'pro_shop', label: 'Early Game — Shop Not Open Yet', impact: 0, type: 'info', ttlHours: 3 },
       { id: 'shop_open', stateKey: 'pro_shop', label: 'Sharpening & Pro Shop Open', impact: 2, type: 'positive', ttlHours: 24 },
+      { id: 'fact_shop_essentials', label: 'Shop Scaled Down — Sharpening & Essentials Only', impact: 0, type: 'shop_tier_fact' },
       { id: 'perm_pro_shop', label: 'Pro Shop Permanently Closed', impact: -3, type: 'permanent', permKind: 'pro_shop' },
     ],
   },
@@ -170,6 +179,7 @@ const CONDITION_LABELS = {
 };
 
 const CORNER_MATS_THRESHOLD = 3;
+const SHOP_ESSENTIALS_THRESHOLD = 3;
 const AT_RINK_RADIUS_MILES = 0.35;
 const BIG_BOX_FALLBACK_RADIUS_MILES = 15.0; // 15 miles (US) / ~25 km (Canada)
 const COOLDOWN_MS = 2 * 60 * 60 * 1000;
@@ -286,6 +296,11 @@ function getHockeyServiceTier(rink) {
     return 1;
   }
   return 0;
+}
+
+// Signal #4: Determine whether a Tier 3 Full Pro Shop has been audited/confirmed vs. website-seeded
+function isProShopVerified(rink) {
+  return Boolean(rink?.pro_shop_verified_at);
 }
 
 // Progressive Blended Facility Condition Rating (1.0 - 5.0)
@@ -467,11 +482,12 @@ export default function App() {
   const [adminPhotoRinkId, setAdminPhotoRinkId] = useState('');
   const [uploadingExterior, setUploadingExterior] = useState(false);
 
-  // Founder Admin Sheet, Parking & Facility Notes Editor State
+  // Founder Admin Sheet, Parking, Pro Shop Tier & Facility Notes Editor State
   const [adminNotesRinkId, setAdminNotesRinkId] = useState('');
   const [adminSheetsCount, setAdminSheetsCount] = useState(1);
   const [adminSheetNotesText, setAdminSheetNotesText] = useState('');
   const [adminParkingSize, setAdminParkingSize] = useState('Standard Lot');
+  const [adminProShopTier, setAdminProShopTier] = useState(3);
   const [savingSheetNotes, setSavingSheetNotes] = useState(false);
 
   // Founder Admin Amenity Hours Editor State
@@ -909,11 +925,13 @@ export default function App() {
 
   // ============================================================================
   // NORTH AMERICA PRO SHOP / SHARPENING RESCUE (US + Canada)
-  // Excludes big-box stores unless NO real hockey shop/rink shop is within 15 mi / 25 km
+  // Shown for Tier 0/1/2 rinks AND Unverified Tier 3 rinks (Signal #4 protection)
   // ============================================================================
   const nearbyGearSupport = useMemo(() => {
     if (!selectedRink) return null;
-    if (getHockeyServiceTier(selectedRink) >= 2) return null;
+    const tier = getHockeyServiceTier(selectedRink);
+    const verified = isProShopVerified(selectedRink);
+    if (tier === 3 && verified) return null;
 
     const rinkCountry = selectedRink.country || 'US';
     const hasCoords =
@@ -1082,6 +1100,58 @@ export default function App() {
       return;
     }
 
+    if (option.type === 'shop_tier_fact') {
+      const currentTier = getHockeyServiceTier(rink);
+      if (currentTier <= 2) {
+        showToast('This rink is already listed as Sharpening & Essentials Only (no full gear).');
+        setActiveCategory(null);
+        return;
+      }
+
+      setBusyAction(true);
+      try {
+        const nextConfirms = (Number(rink.shop_essentials_confirmations) || 0) + 1;
+        const shouldDowngrade = nextConfirms >= SHOP_ESSENTIALS_THRESHOLD;
+        const nowIso = new Date().toISOString();
+
+        const updates = {
+          shop_essentials_confirmations: nextConfirms,
+          updated_at: nowIso,
+        };
+
+        if (shouldDowngrade) {
+          updates.pro_shop_tier = 2;
+          updates.pro_shop_status = SHOP_TIER_STATUS_TEXT[2];
+          updates.pro_shop_verified_at = nowIso;
+          updates.baseline_score = Math.max(0, rink.baseline_score - 3);
+          updates.live_score = Math.max(0, rink.live_score - 3);
+        }
+
+        const { error: shopFactErr } = await supabase
+          .from('rinks')
+          .update(updates)
+          .eq('id', rink.id);
+
+        if (shopFactErr) throw shopFactErr;
+
+        recordCooldown(rink.id, option.id);
+        setActiveCategory(null);
+
+        showToast(
+          shouldDowngrade
+            ? `✓ Confirmed (${nextConfirms}/${SHOP_ESSENTIALS_THRESHOLD}): Updated to Sharpening & Essentials Only (-3 pts).`
+            : `Logged! (${nextConfirms}/${SHOP_ESSENTIALS_THRESHOLD} parent confirmations needed to downgrade Full Pro Shop)`
+        );
+
+        await fetchData();
+      } catch (err) {
+        showToast('Error updating pro shop tier: ' + err.message);
+      } finally {
+        setBusyAction(false);
+      }
+      return;
+    }
+
     const rinkActiveAlerts = alerts.filter((al) => al.rink_id === rink.id);
     const exactMatch = rinkActiveAlerts.find(
       (al) => parseAlertMeta(al).cleanLabel.toLowerCase() === option.label.toLowerCase()
@@ -1222,15 +1292,17 @@ export default function App() {
 
     const meta = parseAlertMeta(alertItem);
     const labelLower = meta.cleanLabel.toLowerCase();
-    const rinkUpdates = { updated_at: new Date().toISOString() };
+    const nowIso = new Date().toISOString();
+    const rinkUpdates = { updated_at: nowIso };
 
     if (labelLower.includes('pro shop')) {
+      rinkUpdates.pro_shop_verified_at = nowIso;
       if (targetRink.has_hockey_vending) {
         rinkUpdates.pro_shop_tier = 1;
-        rinkUpdates.pro_shop_status = 'No Pro Shop (24/7 Vending Only)';
+        rinkUpdates.pro_shop_status = SHOP_TIER_STATUS_TEXT[1];
       } else {
         rinkUpdates.pro_shop_tier = 0;
-        rinkUpdates.pro_shop_status = 'No Pro Shop / No Sharpening';
+        rinkUpdates.pro_shop_status = SHOP_TIER_STATUS_TEXT[0];
       }
     } else if (labelLower.includes('restaurant') || labelLower.includes('bar')) {
       rinkUpdates.hospitality_tier = 0;
@@ -1293,7 +1365,7 @@ export default function App() {
           has_off_ice: false,
           sheet_temp_notes:
             pendingItem.submitted_notes || `${sheetsCount} Regulation Sheet(s)`,
-          pro_shop_status: 'Sharpening & Essentials (Tape, Laces, Blades)',
+          pro_shop_status: SHOP_TIER_STATUS_TEXT[2],
           food_options: 'Basic Concession Stand / Vending Only',
           viewing_comfort: 'Standard Heated Lobby Viewing',
           off_ice_training: 'None',
@@ -1381,6 +1453,7 @@ export default function App() {
     setAdminSheetsCount(target?.sheets || 1);
     setAdminSheetNotesText(target?.sheet_temp_notes || '');
     setAdminParkingSize(target?.parking_lot_size || 'Standard Lot');
+    setAdminProShopTier(getHockeyServiceTier(target));
   };
 
   const handleAdminSaveSheetNotes = async (e) => {
@@ -1389,19 +1462,40 @@ export default function App() {
 
     setSavingSheetNotes(true);
     try {
+      const targetRink = rinks.find((r) => String(r.id) === String(adminNotesRinkId));
+      const oldTier = getHockeyServiceTier(targetRink);
+      const newTier = Number(adminProShopTier);
+      const tierPtDelta = (SHOP_TIER_POINTS[newTier] ?? 0) - (SHOP_TIER_POINTS[oldTier] ?? 0);
+      const nowIso = new Date().toISOString();
+
+      const updatePayload = {
+        sheets: Math.max(1, Number(adminSheetsCount) || 1),
+        sheet_temp_notes: adminSheetNotesText.trim(),
+        parking_lot_size: adminParkingSize,
+        pro_shop_verified_at: nowIso,
+        updated_at: nowIso,
+      };
+
+      if (targetRink && oldTier !== newTier) {
+        updatePayload.pro_shop_tier = newTier;
+        updatePayload.pro_shop_status = SHOP_TIER_STATUS_TEXT[newTier];
+        updatePayload.has_hockey_vending = newTier === 1 ? true : targetRink.has_hockey_vending;
+        updatePayload.baseline_score = Math.max(0, Math.min(100, targetRink.baseline_score + tierPtDelta));
+        updatePayload.live_score = Math.max(0, Math.min(100, targetRink.live_score + tierPtDelta));
+      }
+
       const { error } = await supabase
         .from('rinks')
-        .update({
-          sheets: Math.max(1, Number(adminSheetsCount) || 1),
-          sheet_temp_notes: adminSheetNotesText.trim(),
-          parking_lot_size: adminParkingSize,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updatePayload)
         .eq('id', adminNotesRinkId);
 
       if (error) throw error;
 
-      showToast('Sheet count, parking size & status pill updated!');
+      showToast(
+        tierPtDelta !== 0
+          ? `Saved! Pro shop updated (${tierPtDelta > 0 ? `+${tierPtDelta}` : tierPtDelta} pts) & marked verified.`
+          : 'Saved facility specs & marked pro shop verified!'
+      );
       await fetchData();
     } catch (err) {
       showToast('Could not update facility settings: ' + err.message);
@@ -1537,11 +1631,13 @@ export default function App() {
 
   const handleVerifyRink = async (rink) => {
     try {
+      const nowIso = new Date().toISOString();
       const { error } = await supabase
         .from('rinks')
         .update({
           verification_status: 'Verified by Hockey Parents',
-          updated_at: new Date().toISOString(),
+          pro_shop_verified_at: nowIso,
+          updated_at: nowIso,
         })
         .eq('id', rink.id);
       if (error) throw error;
@@ -2385,6 +2481,7 @@ export default function App() {
               const hasPermFlag = rinkAlerts.some((a) => parseAlertMeta(a).isPermanent);
               const isWatched = watchedIds.includes(rink.id);
               const serviceTier = getHockeyServiceTier(rink);
+              const shopVerified = isProShopVerified(rink);
               const conditionScore = getBlendedConditionRating(rink);
               const distanceLabel = formatDistance(rink.distanceMiles, rink.country || 'US');
 
@@ -2560,9 +2657,13 @@ export default function App() {
                     <span
                       className={`px-3 py-1 rounded-full border ${
                         serviceTier === 3
-                          ? isLight
-                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                            : 'bg-emerald-400/15 text-emerald-300 border-emerald-400/25'
+                          ? shopVerified
+                            ? isLight
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                              : 'bg-emerald-400/15 text-emerald-300 border-emerald-400/25'
+                            : isLight
+                            ? 'bg-amber-50/80 text-amber-800 border-amber-200'
+                            : 'bg-amber-400/10 text-amber-200 border-amber-400/25'
                           : serviceTier === 2
                           ? isLight
                             ? 'bg-sky-50 text-sky-800 border-sky-200'
@@ -2574,7 +2675,9 @@ export default function App() {
                     >
                       🏒{' '}
                       {serviceTier === 3
-                        ? 'Full Pro Shop'
+                        ? shopVerified
+                          ? 'Full Pro Shop'
+                          : 'Full Pro Shop (Unverified)'
                         : serviceTier === 2
                         ? 'Sharpening & Essentials'
                         : serviceTier === 1
@@ -3513,13 +3616,15 @@ export default function App() {
                           : isLight
                           ? 'text-rose-600'
                           : 'text-rose-400';
-                      } else if (opt.type === 'info' || opt.type === 'facility_fact') {
+                      } else if (opt.type === 'info' || opt.type === 'facility_fact' || opt.type === 'shop_tier_fact') {
                         pillStyle = isLight
                           ? 'bg-sky-50/80 hover:bg-sky-100/80 border-sky-200 text-sky-950'
                           : 'bg-[#182026] hover:bg-[#1E2932] border-sky-400/25 text-sky-100';
                         badgeText =
                           opt.type === 'facility_fact'
                             ? `${Number(selectedRink.corner_mats_confirmations) || 0}/${CORNER_MATS_THRESHOLD} Verified`
+                            : opt.type === 'shop_tier_fact'
+                            ? `${Number(selectedRink.shop_essentials_confirmations) || 0}/${SHOP_ESSENTIALS_THRESHOLD} Confirms`
                             : '0 pts · Info';
                         badgeColor = isLight ? 'text-sky-700' : 'text-sky-300';
                       } else if (opt.type === 'positive') {
@@ -3550,7 +3655,7 @@ export default function App() {
                           }`}
                         >
                           <span className="flex items-center gap-2">
-                            {(opt.type === 'info' || opt.type === 'facility_fact') && (
+                            {(opt.type === 'info' || opt.type === 'facility_fact' || opt.type === 'shop_tier_fact') && (
                               <Info
                                 className={`w-3.5 h-3.5 shrink-0 ${
                                   isLight ? 'text-sky-600' : 'text-sky-400'
@@ -3647,7 +3752,18 @@ export default function App() {
                 >
                   <ShoppingBag className="w-4 h-4" /> Pro Shop, 24/7 Vending & Food
                 </div>
-                <p>• Shop: {selectedRink.pro_shop_status}</p>
+                <p>
+                  • Shop: {selectedRink.pro_shop_status}
+                  {getHockeyServiceTier(selectedRink) === 3 && !isProShopVerified(selectedRink) && (
+                    <span
+                      className={`block mt-0.5 text-[11px] font-semibold ${
+                        isLight ? 'text-amber-700' : 'text-amber-300/90'
+                      }`}
+                    >
+                      (Unverified — call ahead for gear)
+                    </span>
+                  )}
+                </p>
 
                 {/* Compact 1-Line Pills with Pinned Distance */}
                 {nearbyGearSupport && (
@@ -4326,7 +4442,7 @@ export default function App() {
                   </form>
                 </div>
 
-                {/* Edit Sheets, Parking & Status Pill */}
+                {/* Edit Sheets, Parking, Pro Shop Tier & Status Pill */}
                 <div
                   className={`space-y-2.5 border rounded-2xl p-3.5 ${
                     isLight ? 'bg-amber-50/70 border-amber-200' : 'bg-[#0F1114] border-amber-400/25'
@@ -4338,7 +4454,7 @@ export default function App() {
                         isLight ? 'text-amber-800' : 'text-amber-300'
                       }`}
                     >
-                      Edit Sheets, Parking & Status Pill
+                      Edit Sheets, Parking & Pro Shop Tier
                     </h4>
                     <span className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
                       Facility specs
@@ -4359,7 +4475,7 @@ export default function App() {
                       .sort((a, b) => a.name.localeCompare(b.name))
                       .map((r) => (
                         <option key={r.id} value={r.id}>
-                          {r.name} ({r.sheets} {r.sheets === 1 ? 'Sheet' : 'Sheets'} · {r.parking_lot_size || 'Standard Lot'})
+                          {r.name} (Tier {getHockeyServiceTier(r)} Shop · {r.sheets} {r.sheets === 1 ? 'Sheet' : 'Sheets'})
                         </option>
                       ))}
                   </select>
@@ -4421,6 +4537,30 @@ export default function App() {
                             isLight ? 'text-slate-600' : 'text-zinc-400'
                           }`}
                         >
+                          On-Site Pro Shop Tier (Auto-adjusts score & marks verified)
+                        </label>
+                        <select
+                          value={adminProShopTier}
+                          onChange={(e) => setAdminProShopTier(Number(e.target.value))}
+                          className={`w-full border rounded-xl px-3 py-2 text-xs font-bold focus:outline-none ${
+                            isLight
+                              ? 'bg-white border-slate-300 text-slate-900'
+                              : 'bg-[#181B20] border-white/[0.1] text-white'
+                          }`}
+                        >
+                          <option value={3}>Tier 3 — Full Pro Shop (Gear, Sticks, Skates + Sharpening)</option>
+                          <option value={2}>Tier 2 — Skeleton Shop (Sharpening, Tape & Laces Only)</option>
+                          <option value={1}>Tier 1 — 24/7 Gear Vending Machine Only</option>
+                          <option value={0}>Tier 0 — No Pro Shop / No Sharpening</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label
+                          className={`block text-[11px] font-bold mb-1 ${
+                            isLight ? 'text-slate-600' : 'text-zinc-400'
+                          }`}
+                        >
                           Header Sheet Status Pill Text
                         </label>
                         <input
@@ -4445,7 +4585,7 @@ export default function App() {
                             : 'bg-amber-400 hover:bg-amber-300 text-zinc-950'
                         }`}
                       >
-                        {savingSheetNotes ? 'Saving...' : 'Save Sheets, Parking & Pill'}
+                        {savingSheetNotes ? 'Saving...' : 'Save Facility Specs & Verify Shop'}
                       </button>
                     </form>
                   )}
