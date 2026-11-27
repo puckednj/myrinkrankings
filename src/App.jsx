@@ -378,6 +378,7 @@ export default function App() {
   const [selectedRink, setSelectedRink] = useState(null);
   const [showHoursModal, setShowHoursModal] = useState(false);
   const [activeCategory, setActiveCategory] = useState(null);
+  const [expandRinkAlerts, setExpandRinkAlerts] = useState(false);
 
   // Live Reports Modal State (Opened via Live Pulses pill)
   const [showLiveReportsModal, setShowLiveReportsModal] = useState(false);
@@ -446,6 +447,7 @@ export default function App() {
       if (selectedRink) {
         setSelectedRink(null);
         setActiveCategory(null);
+        setExpandRinkAlerts(false);
         setDragOffset({ x: 0, y: 0 });
         return;
       }
@@ -677,10 +679,10 @@ export default function App() {
         if (liveReportSort === 'IMPACT') {
           const aImpact = a.score_impact || 0;
           const bImpact = b.score_impact || 0;
-          if (aImpact !== bImpact) return aImpact - bImpact; // Negatives (-4, -3, -2) first
+          if (aImpact !== bImpact) return aImpact - bImpact;
           return timeB - timeA;
         }
-        return timeB - timeA; // NEWEST
+        return timeB - timeA;
       });
   }, [alerts, liveReportCategory, liveReportSort, watchedIds]);
 
@@ -826,7 +828,7 @@ export default function App() {
         return;
       }
 
-      // 2. State-Flipping: find any active alert in the SAME `stateKey` (e.g., Delayed <-> Back on Schedule)
+      // 2. State-Flipping: find any active alert in the SAME `stateKey`
       const conflictingAlerts = option.stateKey
         ? rinkActiveAlerts.filter((al) => parseAlertMeta(al).stateKey === option.stateKey)
         : [];
@@ -1377,6 +1379,7 @@ export default function App() {
     setSelectedRink(rink);
     setShowHoursModal(false);
     setActiveCategory(null);
+    setExpandRinkAlerts(false);
     setDragOffset({ x: 0, y: 0 });
   };
 
@@ -1384,6 +1387,7 @@ export default function App() {
     setSelectedRink(null);
     setShowHoursModal(false);
     setActiveCategory(null);
+    setExpandRinkAlerts(false);
     setDragOffset({ x: 0, y: 0 });
     popModalHistory();
   };
@@ -2556,68 +2560,143 @@ export default function App() {
             </div>
 
             {/* ================================================================= */}
-            {/* SLEEK SINGLE-LINE LIVE STATUS (Exceptions Only — Zero Feed Slop)  */}
+            {/* COLLAPSIBLE LIVE STATUS STRIP (1-Line Summary When 2+ Reports)    */}
             {/* ================================================================= */}
-            {selectedRinkAlerts.length > 0 && (
-              <div className="space-y-1.5">
-                {selectedRinkAlerts.map((al) => {
-                  const meta = parseAlertMeta(al);
-                  const isNeg = al.score_impact < 0;
-                  const isPos = al.score_impact > 0;
+            {selectedRinkAlerts.length > 0 && (() => {
+              const sortedSheetAlerts = [...selectedRinkAlerts].sort((a, b) => {
+                const aNeg = a.score_impact < 0 ? 1 : 0;
+                const bNeg = b.score_impact < 0 ? 1 : 0;
+                if (bNeg !== aNeg) return bNeg - aNeg;
+                return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+              });
 
-                  const rowTheme = meta.isPermanent || isNeg
-                    ? isLight
+              const topAlert = sortedSheetAlerts[0];
+              const topMeta = parseAlertMeta(topAlert);
+              const extraCount = sortedSheetAlerts.length - 1;
+              const isMulti = extraCount > 0;
+
+              const getAlertRowStyle = (al, meta) => {
+                const isNeg = al.score_impact < 0;
+                const isPos = al.score_impact > 0;
+                if (meta.isPermanent || isNeg) {
+                  return {
+                    row: isLight
                       ? 'bg-amber-50 border-amber-300/90 text-amber-950'
-                      : 'bg-[#221C16] border-amber-400/35 text-amber-100'
-                    : isPos
-                    ? isLight
+                      : 'bg-[#221C16] border-amber-400/35 text-amber-100',
+                    dot: 'bg-amber-400',
+                  };
+                }
+                if (isPos) {
+                  return {
+                    row: isLight
                       ? 'bg-emerald-50 border-emerald-300/90 text-emerald-950'
-                      : 'bg-[#15221E] border-emerald-400/35 text-emerald-100'
-                    : isLight
+                      : 'bg-[#15221E] border-emerald-400/35 text-emerald-100',
+                    dot: 'bg-emerald-400',
+                  };
+                }
+                return {
+                  row: isLight
                     ? 'bg-sky-50 border-sky-200 text-sky-950'
-                    : 'bg-[#151F26] border-sky-400/30 text-sky-100';
+                    : 'bg-[#151F26] border-sky-400/30 text-sky-100',
+                  dot: 'bg-sky-400',
+                };
+              };
 
-                  const dotColor = meta.isPermanent || isNeg
-                    ? 'bg-amber-400'
-                    : isPos
-                    ? 'bg-emerald-400'
-                    : 'bg-sky-400';
+              // Collapsed 1-Line Summary Bar when 2+ alerts are active
+              if (isMulti && !expandRinkAlerts) {
+                const topStyle = getAlertRowStyle(topAlert, topMeta);
+                return (
+                  <button
+                    type="button"
+                    onClick={() => setExpandRinkAlerts(true)}
+                    className={`w-full flex items-center justify-between gap-2.5 px-3.5 py-2.5 rounded-2xl border text-xs text-left transition active:scale-[0.99] ${topStyle.row}`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${topStyle.dot}`} />
+                      <p className="truncate font-bold">
+                        <span className="opacity-70 font-extrabold uppercase text-[10px] tracking-wider mr-1.5">
+                          {topMeta.isPermanent ? 'Closed' : topAlert.category}
+                        </span>
+                        <span>{topMeta.cleanLabel}</span>
+                      </p>
+                    </div>
 
-                  return (
-                    <div
-                      key={al.id}
-                      className={`flex items-center justify-between gap-2.5 px-3.5 py-2 rounded-2xl border text-xs ${rowTheme}`}
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
-                        <p className="truncate font-bold">
-                          <span className="opacity-70 font-extrabold uppercase text-[10px] tracking-wider mr-1.5">
-                            {meta.isPermanent ? 'Closed' : al.category}
-                          </span>
-                          <span>{meta.cleanLabel}</span>
-                          <span className="opacity-65 font-medium ml-1.5">
-                            · {formatTimeAgo(al.created_at)}
-                            {meta.confirmations > 1 ? ` (${meta.confirmations})` : ''}
-                          </span>
-                        </p>
-                      </div>
-
-                      <button
-                        disabled={busyAction}
-                        onClick={() => handleResolveAlert(selectedRink, al, false)}
-                        className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-extrabold transition active:scale-95 ${
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
                           isLight
-                            ? 'bg-white/90 hover:bg-white text-slate-800 border border-slate-200/80'
-                            : 'bg-white/[0.08] hover:bg-white/[0.15] text-zinc-200'
+                            ? 'bg-white/90 text-slate-900 border border-slate-300/80'
+                            : 'bg-white/[0.12] text-white'
                         }`}
                       >
-                        Clear
+                        +{extraCount} more
+                      </span>
+                      <ChevronRight className="w-3.5 h-3.5 opacity-75" />
+                    </div>
+                  </button>
+                );
+              }
+
+              // Expanded View (or Single Alert View)
+              return (
+                <div className="space-y-1.5">
+                  {isMulti && (
+                    <div className="flex items-center justify-between px-1 text-[11px]">
+                      <span className={`font-extrabold uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
+                        {sortedSheetAlerts.length} Active Reports
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setExpandRinkAlerts(false)}
+                        className={`font-extrabold inline-flex items-center gap-1 ${
+                          isLight ? 'text-sky-700 hover:text-sky-600' : 'text-cyan-300 hover:text-cyan-200'
+                        }`}
+                      >
+                        <span>Collapse</span>
                       </button>
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                  )}
+
+                  {sortedSheetAlerts.map((al) => {
+                    const meta = parseAlertMeta(al);
+                    const style = getAlertRowStyle(al, meta);
+
+                    return (
+                      <div
+                        key={al.id}
+                        className={`flex items-center justify-between gap-2.5 px-3.5 py-2 rounded-2xl border text-xs ${style.row}`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${style.dot}`} />
+                          <p className="truncate font-bold">
+                            <span className="opacity-70 font-extrabold uppercase text-[10px] tracking-wider mr-1.5">
+                              {meta.isPermanent ? 'Closed' : al.category}
+                            </span>
+                            <span>{meta.cleanLabel}</span>
+                            <span className="opacity-65 font-medium ml-1.5">
+                              · {formatTimeAgo(al.created_at)}
+                              {meta.confirmations > 1 ? ` (${meta.confirmations})` : ''}
+                            </span>
+                          </p>
+                        </div>
+
+                        <button
+                          disabled={busyAction}
+                          onClick={() => handleResolveAlert(selectedRink, al, false)}
+                          className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-extrabold transition active:scale-95 ${
+                            isLight
+                              ? 'bg-white/90 hover:bg-white text-slate-800 border border-slate-200/80'
+                              : 'bg-white/[0.08] hover:bg-white/[0.15] text-zinc-200'
+                          }`}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
 
             {/* ================================================================= */}
             {/* FACILITY EXTERIOR PHOTO ("HAVE I BEEN HERE?" RECOGNITION BANNER)  */}
