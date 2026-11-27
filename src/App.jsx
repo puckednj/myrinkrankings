@@ -3185,13 +3185,13 @@ export default function App() {
                   </strong>
                   {selectedRink.parking_is_paid && (
                     <span
-                      className={`ml-1.5 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border inline-block align-middle ${
+                      className={`mx-1.5 text-[9px] leading-none tracking-wide font-extrabold uppercase px-1.5 py-[2px] rounded-md border inline-flex items-center align-baseline ${
                         isLight
                           ? 'bg-amber-100 text-amber-800 border-amber-300'
-                          : 'bg-amber-400/20 text-amber-300 border-amber-400/35'
+                          : 'bg-amber-400/15 text-amber-300 border-amber-400/35'
                       }`}
                     >
-                      💳 Paid
+                      Paid
                     </span>
                   )}
                   {selectedRink.parking_bag_drop &&
