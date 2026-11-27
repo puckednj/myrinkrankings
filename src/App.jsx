@@ -26,7 +26,8 @@ const AFFILIATE_LINKS = {
 };
 
 // ============================================================================
-// WAZE-STYLE 6 CATEGORIES + SUBMENUS (Issues, 0-pt Neutral Info, Positives, Perm)
+// WAZE-STYLE 6 CATEGORIES + STATE-FLIPPING OPTIONS (3h / 24h Auto-Reset)
+// Options sharing a `stateKey` flip/replace each other instead of stacking logs.
 // ============================================================================
 const WAZE_CATEGORIES = [
   {
@@ -37,10 +38,10 @@ const WAZE_CATEGORIES = [
     accentDark: 'text-cyan-300 border-cyan-400/25 bg-cyan-400/10',
     accentLight: 'text-cyan-700 border-cyan-500/30 bg-cyan-50',
     options: [
-      { id: 'ice_rutted', label: 'Rutted / Slushy / Wet Ice', impact: -3, type: 'issue', ttlHours: 48 },
-      { id: 'ice_zamboni', label: 'Zamboni / Ice Cut Delayed', impact: -2, type: 'issue', ttlHours: 4 },
-      { id: 'ice_sheet_swap', label: 'Multi-Sheet — Check Monitor for Sheet', impact: 0, type: 'info', ttlHours: 4 },
-      { id: 'ice_fast', label: 'Fast, Crisp Ice Sheet', impact: 2, type: 'positive', ttlHours: 48 },
+      { id: 'ice_rutted', stateKey: 'ice_surface', label: 'Rutted / Slushy / Wet Ice', impact: -3, type: 'issue', ttlHours: 24 },
+      { id: 'ice_zamboni', stateKey: 'zamboni_cut', label: 'Zamboni / Ice Cut Delayed', impact: -2, type: 'issue', ttlHours: 3 },
+      { id: 'ice_sheet_swap', stateKey: 'sheet_monitor', label: 'Multi-Sheet — Check Monitor for Sheet', impact: 0, type: 'info', ttlHours: 3 },
+      { id: 'ice_fast', stateKey: 'ice_surface', label: 'Fast, Crisp Ice Sheet', impact: 2, type: 'positive', ttlHours: 24 },
     ],
   },
   {
@@ -51,10 +52,10 @@ const WAZE_CATEGORIES = [
     accentDark: 'text-sky-300 border-sky-400/25 bg-sky-400/10',
     accentLight: 'text-sky-700 border-sky-500/30 bg-sky-50',
     options: [
-      { id: 'temp_freezing', label: 'Arena Freezing / Heaters Off', impact: -3, type: 'issue', ttlHours: 48 },
-      { id: 'temp_glass', label: 'Foggy / Scratched Viewing Glass', impact: -2, type: 'issue', ttlHours: 48 },
-      { id: 'temp_bleachers', label: 'Standing Room / Bleachers Full', impact: 0, type: 'info', ttlHours: 4 },
-      { id: 'temp_warm', label: 'Warm Viewing / Heaters On', impact: 2, type: 'positive', ttlHours: 48 },
+      { id: 'temp_freezing', stateKey: 'arena_temp', label: 'Arena Freezing / Heaters Off', impact: -3, type: 'issue', ttlHours: 24 },
+      { id: 'temp_glass', stateKey: 'viewing_glass', label: 'Foggy / Scratched Viewing Glass', impact: -2, type: 'issue', ttlHours: 24 },
+      { id: 'temp_bleachers', stateKey: 'bleacher_crowd', label: 'Standing Room / Bleachers Full', impact: 0, type: 'info', ttlHours: 3 },
+      { id: 'temp_warm', stateKey: 'arena_temp', label: 'Warm Viewing / Heaters On', impact: 2, type: 'positive', ttlHours: 24 },
       { id: 'fact_corner_mats_yes', label: 'Padded Mats in Spectator Corners (Excl. Zamboni)', impact: 0, type: 'facility_fact', matDelta: 1 },
       { id: 'fact_corner_mats_no', label: 'Bare Concrete in Corners (Walkways Only)', impact: 0, type: 'facility_fact', matDelta: -1 },
     ],
@@ -67,9 +68,9 @@ const WAZE_CATEGORIES = [
     accentDark: 'text-violet-300 border-violet-400/25 bg-violet-400/10',
     accentLight: 'text-violet-700 border-violet-500/30 bg-violet-50',
     options: [
-      { id: 'rr_out', label: 'Restroom Out of Order / Flooded', impact: -4, type: 'issue', ttlHours: 48 },
-      { id: 'rr_locker', label: 'Locker Room Dirty / No Heat', impact: -3, type: 'issue', ttlHours: 48 },
-      { id: 'rr_clean', label: 'Spotless Restrooms & Locker Rooms', impact: 1, type: 'positive', ttlHours: 48 },
+      { id: 'rr_out', stateKey: 'restrooms', label: 'Restroom Out of Order / Flooded', impact: -4, type: 'issue', ttlHours: 24 },
+      { id: 'rr_locker', stateKey: 'locker_rooms', label: 'Locker Room Dirty / No Heat', impact: -3, type: 'issue', ttlHours: 24 },
+      { id: 'rr_clean', stateKey: 'restrooms', label: 'Spotless Restrooms & Locker Rooms', impact: 1, type: 'positive', ttlHours: 24 },
     ],
   },
   {
@@ -81,11 +82,11 @@ const WAZE_CATEGORIES = [
     accentLight: 'text-emerald-700 border-emerald-500/30 bg-emerald-50',
     showPostedHoursNote: true,
     options: [
-      { id: 'shop_no_sharp', label: 'No Skate Sharpening (Tape & Laces OK)', impact: -2, type: 'issue', ttlHours: 48 },
-      { id: 'shop_closed_hours', label: 'Pro Shop Closed (During Posted Hours)', impact: -3, type: 'issue', ttlHours: 48 },
-      { id: 'shop_vending_down', label: '24/7 Gear Vending Empty / Jammed', impact: -2, type: 'issue', ttlHours: 48 },
-      { id: 'shop_early_info', label: 'Early Game — Shop Not Open Yet', impact: 0, type: 'info', ttlHours: 4 },
-      { id: 'shop_open', label: 'Sharpening & Pro Shop Open', impact: 2, type: 'positive', ttlHours: 48 },
+      { id: 'shop_no_sharp', stateKey: 'pro_shop', label: 'No Skate Sharpening (Tape & Laces OK)', impact: -2, type: 'issue', ttlHours: 24 },
+      { id: 'shop_closed_hours', stateKey: 'pro_shop', label: 'Pro Shop Closed (During Posted Hours)', impact: -3, type: 'issue', ttlHours: 24 },
+      { id: 'shop_vending_down', stateKey: 'vending', label: '24/7 Gear Vending Empty / Jammed', impact: -2, type: 'issue', ttlHours: 24 },
+      { id: 'shop_early_info', stateKey: 'pro_shop', label: 'Early Game — Shop Not Open Yet', impact: 0, type: 'info', ttlHours: 3 },
+      { id: 'shop_open', stateKey: 'pro_shop', label: 'Sharpening & Pro Shop Open', impact: 2, type: 'positive', ttlHours: 24 },
       { id: 'perm_pro_shop', label: 'Pro Shop Permanently Closed', impact: -3, type: 'permanent', permKind: 'pro_shop' },
     ],
   },
@@ -97,9 +98,9 @@ const WAZE_CATEGORIES = [
     accentDark: 'text-amber-300 border-amber-400/25 bg-amber-400/10',
     accentLight: 'text-amber-700 border-amber-500/30 bg-amber-50',
     options: [
-      { id: 'stream_offline', label: 'LiveBarn / Stream Offline', impact: -3, type: 'issue', ttlHours: 48 },
-      { id: 'stream_clock', label: 'Scoreboard / Horn Malfunction', impact: -2, type: 'issue', ttlHours: 48 },
-      { id: 'stream_ok', label: 'Stream & Scoreboard Working', impact: 1, type: 'positive', ttlHours: 48 },
+      { id: 'stream_offline', stateKey: 'streaming', label: 'LiveBarn / Stream Offline', impact: -3, type: 'issue', ttlHours: 24 },
+      { id: 'stream_clock', stateKey: 'scoreboard', label: 'Scoreboard / Horn Malfunction', impact: -2, type: 'issue', ttlHours: 24 },
+      { id: 'stream_ok', stateKey: 'streaming', label: 'Stream & Scoreboard Working', impact: 1, type: 'positive', ttlHours: 24 },
     ],
   },
   {
@@ -110,17 +111,30 @@ const WAZE_CATEGORIES = [
     accentDark: 'text-rose-300 border-rose-400/25 bg-rose-400/10',
     accentLight: 'text-rose-700 border-rose-500/30 bg-rose-50',
     options: [
-      { id: 'ops_parking', label: 'Parking Lot Gridlock / Full', impact: -2, type: 'issue', ttlHours: 4 },
-      { id: 'ops_behind', label: 'Games Running 30+ Min Behind', impact: -2, type: 'issue', ttlHours: 4 },
-      { id: 'ops_overflow_info', label: 'Overflow Lot Active — Skip Main Lot', impact: 0, type: 'info', ttlHours: 4 },
-      { id: 'ops_snack_info', label: 'Snack Bar Closed — Vending / Coffee Only', impact: 0, type: 'info', ttlHours: 4 },
-      { id: 'ops_smooth', label: 'Smooth Ops / On Schedule', impact: 1, type: 'positive', ttlHours: 48 },
+      { id: 'ops_parking', stateKey: 'parking', label: 'Parking Lot Gridlock / Full', impact: -2, type: 'issue', ttlHours: 3 },
+      { id: 'ops_behind', stateKey: 'schedule', label: 'Games Running 30+ Min Behind', impact: -2, type: 'issue', ttlHours: 3 },
+      { id: 'ops_overflow_info', stateKey: 'parking', label: 'Overflow Lot Active — Skip Main Lot', impact: 0, type: 'info', ttlHours: 3 },
+      { id: 'ops_snack_info', stateKey: 'snack_bar', label: 'Snack Bar Closed — Vending / Coffee Only', impact: 0, type: 'info', ttlHours: 3 },
+      { id: 'ops_smooth', stateKey: 'schedule', label: 'Back on Schedule / Smooth Ops', impact: 1, type: 'positive', ttlHours: 3 },
       { id: 'perm_bar_rest', label: 'Restaurant / Bar Permanently Closed', impact: -3, type: 'permanent', permKind: 'bar_rest' },
       { id: 'perm_snack', label: 'Snack Bar / Coffee Permanently Closed', impact: -3, type: 'permanent', permKind: 'snack' },
       { id: 'perm_gym', label: 'Off-Ice Gym / Amenity Permanently Closed', impact: -3, type: 'permanent', permKind: 'gym' },
     ],
   },
 ];
+
+// Lookup map from option label -> stateKey so opposing alerts flip cleanly
+const LABEL_TO_STATE_KEY = (() => {
+  const map = {};
+  WAZE_CATEGORIES.forEach((cat) => {
+    cat.options.forEach((opt) => {
+      if (opt.stateKey) {
+        map[opt.label.toLowerCase()] = opt.stateKey;
+      }
+    });
+  });
+  return map;
+})();
 
 const CONDITION_LABELS = {
   1: 'Dated / Needs TLC',
@@ -220,7 +234,7 @@ function getBlendedConditionRating(rink) {
   return (seed * 5 + sum) / (5 + count);
 }
 
-// Format regulation + mini rink counts and total sheets in the building
+// Format regulation + mini/roller rink counts and total sheets in the building
 function formatMainCardSheets(rink) {
   const notes = (rink.sheet_temp_notes || '').toLowerCase();
   const regLabel = `${rink.sheets} ${rink.sheets === 1 ? 'Sheet' : 'Sheets'}`;
@@ -237,6 +251,9 @@ function formatMainCardSheets(rink) {
     const total = (rink.sheets || 1) + miniCount;
     const miniLabel = `${miniCount} ${miniCount === 1 ? 'Mini Rink' : 'Mini Rinks'}`;
     return `${regLabel} + ${miniLabel} (${total} Total)`;
+  }
+  if (notes.includes('roller rink')) {
+    return `${regLabel} + 1 Roller Rink`;
   }
   return regLabel;
 }
@@ -260,23 +277,27 @@ function encodeAlertMessage(cleanLabel, ttlTag, confirmations = 1) {
 
 function parseAlertMeta(alertRow) {
   const raw = alertRow?.message || '';
-  const match = raw.match(/^(.*?)\s*\[(4h|48h|PERM)\](?:\s*·\s*(\d+)\s*parents?)?$/i);
+  const match = raw.match(/^(.*?)\s*\[(3h|4h|24h|48h|PERM)\](?:\s*·\s*(\d+)\s*parents?)?$/i);
   if (match) {
     const ttlTag = match[2].toUpperCase();
+    const cleanLabel = match[1].trim();
     return {
-      cleanLabel: match[1].trim(),
+      cleanLabel,
+      stateKey: LABEL_TO_STATE_KEY[cleanLabel.toLowerCase()] || null,
       ttlTag,
       isPermanent: ttlTag === 'PERM' || alertRow.category === 'Permanent Closure',
-      ttlHours: ttlTag === '4H' ? 4 : ttlTag === '48H' ? 48 : null,
+      ttlHours:
+        ttlTag === '3H' ? 3 : ttlTag === '4H' ? 4 : ttlTag === '24H' ? 24 : ttlTag === '48H' ? 48 : null,
       confirmations: Number(match[3]) || 1,
     };
   }
   const isPerm = alertRow.category === 'Permanent Closure';
   return {
     cleanLabel: raw,
-    ttlTag: isPerm ? 'PERM' : '48H',
+    stateKey: LABEL_TO_STATE_KEY[raw.toLowerCase()] || null,
+    ttlTag: isPerm ? 'PERM' : '24H',
     isPermanent: isPerm,
-    ttlHours: isPerm ? null : 48,
+    ttlHours: isPerm ? null : 24,
     confirmations: 1,
   };
 }
@@ -357,8 +378,6 @@ export default function App() {
   const [selectedRink, setSelectedRink] = useState(null);
   const [showHoursModal, setShowHoursModal] = useState(false);
   const [activeCategory, setActiveCategory] = useState(null);
-  const [staffPinPromptAlertId, setStaffPinPromptAlertId] = useState(null);
-  const [staffPinInput, setStaffPinInput] = useState('');
 
   const [showAddRink, setShowAddRink] = useState(false);
   const [showLegalModal, setShowLegalModal] = useState(false);
@@ -495,7 +514,7 @@ export default function App() {
     }
   };
 
-  // Load rinks + alerts and automatically expire stale 4h/48h alerts while restoring score
+  // Load rinks + alerts and automatically expire stale 3h/24h alerts while restoring score
   const fetchData = async () => {
     setLoading(true);
     setErrorMsg('');
@@ -673,14 +692,15 @@ export default function App() {
   };
 
   // ============================================================================
-  // WAZE-STYLE REPORT HANDLER (Facility Facts + Single-Deduction Alert Lock)
+  // STATE-FLIPPING WAZE REPORT HANDLER
+  // Replaces opposing/previous states in the same `stateKey` instead of stacking
   // ============================================================================
   const handleWazeOptionTap = async (rink, categoryObj, option) => {
     if (busyAction) return;
 
     const minsLeft = getRemainingCooldownMins(rink.id, option.id);
     if (minsLeft > 0) {
-      showToast(`You already logged this update. Available again in ${minsLeft}m.`);
+      showToast(`Already logged — available again in ${minsLeft}m.`);
       return;
     }
 
@@ -729,34 +749,59 @@ export default function App() {
       return;
     }
 
-    const existingActive = alerts.find((al) => {
-      if (al.rink_id !== rink.id) return false;
-      const meta = parseAlertMeta(al);
-      return meta.cleanLabel.toLowerCase() === option.label.toLowerCase();
-    });
+    const rinkActiveAlerts = alerts.filter((al) => al.rink_id === rink.id);
+
+    // 1. Check if the exact same status is already active -> confirm it without deducting again
+    const exactMatch = rinkActiveAlerts.find(
+      (al) => parseAlertMeta(al).cleanLabel.toLowerCase() === option.label.toLowerCase()
+    );
 
     setBusyAction(true);
     try {
-      if (existingActive) {
-        const meta = parseAlertMeta(existingActive);
+      if (exactMatch) {
+        const meta = parseAlertMeta(exactMatch);
         const nextCount = meta.confirmations + 1;
         const updatedMsg = encodeAlertMessage(meta.cleanLabel, meta.ttlTag, nextCount);
 
         const { error: confErr } = await supabase
           .from('rink_alerts')
           .update({ message: updatedMsg })
-          .eq('id', existingActive.id);
+          .eq('id', exactMatch.id);
 
         if (confErr) throw confErr;
 
         recordCooldown(rink.id, option.id);
-        showToast(`Confirmed active (${nextCount} parents) — no duplicate penalty deducted.`);
+        setActiveCategory(null);
+        showToast(`Status confirmed (${nextCount} parents).`);
         await fetchData();
         return;
       }
 
+      // 2. State-Flipping: find any active alert in the SAME `stateKey` (e.g., Delayed <-> Back on Schedule)
+      const conflictingAlerts = option.stateKey
+        ? rinkActiveAlerts.filter((al) => parseAlertMeta(al).stateKey === option.stateKey)
+        : [];
+
+      let netScoreDelta = option.impact || 0;
+
+      if (conflictingAlerts.length > 0) {
+        const conflictIds = conflictingAlerts.map((c) => c.id);
+        const refundedPts = conflictingAlerts.reduce(
+          (sum, c) => sum - (c.score_impact || 0),
+          0
+        );
+        netScoreDelta += refundedPts;
+
+        const { error: supersedeErr } = await supabase
+          .from('rink_alerts')
+          .update({ status: 'superseded' })
+          .in('id', conflictIds);
+
+        if (supersedeErr) throw supersedeErr;
+      }
+
       const isPerm = option.type === 'permanent';
-      const ttlTag = isPerm ? 'PERM' : `${option.ttlHours || 48}h`;
+      const ttlTag = isPerm ? 'PERM' : `${option.ttlHours || 24}h`;
       const dbCategory = isPerm ? 'Permanent Closure' : categoryObj.id;
       const encodedMsg = encodeAlertMessage(option.label, ttlTag, 1);
 
@@ -771,8 +816,8 @@ export default function App() {
       ]);
       if (alertErr) throw alertErr;
 
-      if (option.impact !== 0) {
-        const updatedScore = Math.max(0, Math.min(100, rink.live_score + option.impact));
+      if (netScoreDelta !== 0) {
+        const updatedScore = Math.max(0, Math.min(100, rink.live_score + netScoreDelta));
         const { error: updateErr } = await supabase
           .from('rinks')
           .update({ live_score: updatedScore, updated_at: new Date().toISOString() })
@@ -785,47 +830,19 @@ export default function App() {
 
       if (isPerm) {
         showToast(`Permanent closure flagged for Admin review (-3 pt hold applied).`);
+      } else if (conflictingAlerts.length > 0) {
+        showToast(`Status updated to "${option.label}" (${netScoreDelta > 0 ? `+${netScoreDelta}` : netScoreDelta} pts).`);
       } else if (option.impact === 0) {
-        showToast(`Heads-up info tag posted for arriving parents (0 pts).`);
+        showToast(`Heads-up info tag posted (0 pts).`);
       } else {
         showToast(
-          `Live update posted (${option.impact > 0 ? `+${option.impact}` : option.impact} pts) for ${rink.name}`
+          `Status updated (${option.impact > 0 ? `+${option.impact}` : option.impact} pts) for ${rink.name}`
         );
       }
 
       await fetchData();
     } catch (err) {
       showToast('Error saving update: ' + err.message);
-    } finally {
-      setBusyAction(false);
-    }
-  };
-
-  const handleConfirmStillActive = async (rink, alertItem) => {
-    if (busyAction) return;
-    const meta = parseAlertMeta(alertItem);
-    const lockKey = `confirm_${alertItem.id}`;
-    const minsLeft = getRemainingCooldownMins(rink.id, lockKey);
-    if (minsLeft > 0) {
-      showToast(`You already confirmed this alert (${minsLeft}m cooldown).`);
-      return;
-    }
-
-    setBusyAction(true);
-    try {
-      const nextCount = meta.confirmations + 1;
-      const updatedMsg = encodeAlertMessage(meta.cleanLabel, meta.ttlTag, nextCount);
-      const { error } = await supabase
-        .from('rink_alerts')
-        .update({ message: updatedMsg })
-        .eq('id', alertItem.id);
-      if (error) throw error;
-
-      recordCooldown(rink.id, lockKey);
-      showToast(`Confirmed still active (${nextCount} parents).`);
-      await fetchData();
-    } catch (err) {
-      showToast('Could not confirm alert: ' + err.message);
     } finally {
       setBusyAction(false);
     }
@@ -855,17 +872,15 @@ export default function App() {
       if (scoreErr) throw scoreErr;
 
       const deltaBack = -(alertItem.score_impact || 0);
-      setStaffPinPromptAlertId(null);
-      setStaffPinInput('');
 
       showToast(
-        byStaff
-          ? `✓ Verified Resolved by Rink Staff (${deltaBack > 0 ? `+${deltaBack}` : deltaBack} pts restored)`
-          : `Marked resolved (${deltaBack > 0 ? `+${deltaBack}` : deltaBack} pts restored)`
+        deltaBack !== 0
+          ? `Status cleared (${deltaBack > 0 ? `+${deltaBack}` : deltaBack} pts restored)`
+          : `Status cleared`
       );
       await fetchData();
     } catch (err) {
-      showToast('Could not resolve alert: ' + err.message);
+      showToast('Could not clear status: ' + err.message);
     } finally {
       setBusyAction(false);
     }
@@ -1276,8 +1291,6 @@ export default function App() {
     setSelectedRink(rink);
     setShowHoursModal(false);
     setActiveCategory(null);
-    setStaffPinPromptAlertId(null);
-    setStaffPinInput('');
     setDragOffset({ x: 0, y: 0 });
   };
 
@@ -1480,7 +1493,7 @@ export default function App() {
                 {watchedRinksList.length})
               </span>
               <span className={`text-[11px] ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
-                48h practice-to-game intel
+                24h practice-to-game intel
               </span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1510,10 +1523,8 @@ export default function App() {
                         }`}
                       >
                         {wrAlerts.length > 0
-                          ? `🔥 ${wrAlerts.length} active update${
-                              wrAlerts.length > 1 ? 's' : ''
-                            } (${parseAlertMeta(wrAlerts[0]).cleanLabel})`
-                          : '✓ No active alerts in last 48h'}
+                          ? `${wrAlerts[0].category} · ${parseAlertMeta(wrAlerts[0]).cleanLabel}`
+                          : '✓ Normal baseline conditions'}
                       </p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
@@ -2243,6 +2254,70 @@ export default function App() {
             </div>
 
             {/* ================================================================= */}
+            {/* SLEEK SINGLE-LINE LIVE STATUS (Exceptions Only — Zero Feed Slop)  */}
+            {/* ================================================================= */}
+            {selectedRinkAlerts.length > 0 && (
+              <div className="space-y-1.5">
+                {selectedRinkAlerts.map((al) => {
+                  const meta = parseAlertMeta(al);
+                  const isNeg = al.score_impact < 0;
+                  const isPos = al.score_impact > 0;
+
+                  const rowTheme = meta.isPermanent || isNeg
+                    ? isLight
+                      ? 'bg-amber-50 border-amber-300/90 text-amber-950'
+                      : 'bg-[#221C16] border-amber-400/35 text-amber-100'
+                    : isPos
+                    ? isLight
+                      ? 'bg-emerald-50 border-emerald-300/90 text-emerald-950'
+                      : 'bg-[#15221E] border-emerald-400/35 text-emerald-100'
+                    : isLight
+                    ? 'bg-sky-50 border-sky-200 text-sky-950'
+                    : 'bg-[#151F26] border-sky-400/30 text-sky-100';
+
+                  const dotColor = meta.isPermanent || isNeg
+                    ? 'bg-amber-400'
+                    : isPos
+                    ? 'bg-emerald-400'
+                    : 'bg-sky-400';
+
+                  return (
+                    <div
+                      key={al.id}
+                      className={`flex items-center justify-between gap-2.5 px-3.5 py-2 rounded-2xl border text-xs ${rowTheme}`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
+                        <p className="truncate font-bold">
+                          <span className="opacity-70 font-extrabold uppercase text-[10px] tracking-wider mr-1.5">
+                            {meta.isPermanent ? 'Closed' : al.category}
+                          </span>
+                          <span>{meta.cleanLabel}</span>
+                          <span className="opacity-65 font-medium ml-1.5">
+                            · {formatTimeAgo(al.created_at)}
+                            {meta.confirmations > 1 ? ` (${meta.confirmations})` : ''}
+                          </span>
+                        </p>
+                      </div>
+
+                      <button
+                        disabled={busyAction}
+                        onClick={() => handleResolveAlert(selectedRink, al, false)}
+                        className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-extrabold transition active:scale-95 ${
+                          isLight
+                            ? 'bg-white/90 hover:bg-white text-slate-800 border border-slate-200/80'
+                            : 'bg-white/[0.08] hover:bg-white/[0.15] text-zinc-200'
+                        }`}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ================================================================= */}
             {/* FACILITY EXTERIOR PHOTO ("HAVE I BEEN HERE?" RECOGNITION BANNER)  */}
             {/* ================================================================= */}
             <div
@@ -2320,198 +2395,6 @@ export default function App() {
                 </div>
               )}
             </div>
-
-            {/* ================================================================= */}
-            {/* ACTIVE UPDATES LIST (Single-Deduction Lock + Dual Resolution)     */}
-            {/* ================================================================= */}
-            {selectedRinkAlerts.length > 0 && (
-              <div
-                className={`rounded-[24px] p-4 space-y-2.5 border ${
-                  isLight
-                    ? 'bg-amber-50/90 border-amber-300'
-                    : 'bg-gradient-to-b from-[#231D18] to-[#171412] border-amber-400/30 shadow-[inset_0_1px_0_0_rgba(251,191,36,0.2)]'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <h3
-                    className={`text-xs font-extrabold uppercase tracking-wider flex items-center gap-1.5 ${
-                      isLight ? 'text-amber-900' : 'text-amber-300'
-                    }`}
-                  >
-                    <AlertCircle className="w-4 h-4" /> Active Rink Updates ({selectedRinkAlerts.length})
-                  </h3>
-                  <span className={`text-[11px] ${isLight ? 'text-amber-800/80' : 'text-zinc-400'}`}>
-                    Visible to all parents
-                  </span>
-                </div>
-
-                <div className="space-y-2.5">
-                  {selectedRinkAlerts.map((al) => {
-                    const meta = parseAlertMeta(al);
-                    const isStaffPromptOpen = staffPinPromptAlertId === al.id;
-
-                    return (
-                      <div
-                        key={al.id}
-                        className={`border rounded-2xl p-3.5 text-xs space-y-2.5 ${
-                          meta.isPermanent
-                            ? isLight
-                              ? 'bg-rose-50 border-rose-300'
-                              : 'bg-rose-950/35 border-rose-400/35'
-                            : isLight
-                            ? 'bg-white border-amber-200'
-                            : 'bg-[#12100E]/90 border-white/[0.07]'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="space-y-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              {meta.isPermanent && (
-                                <span
-                                  className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border ${
-                                    isLight
-                                      ? 'bg-rose-100 text-rose-800 border-rose-300'
-                                      : 'bg-rose-500/25 text-rose-200 border-rose-400/40'
-                                  }`}
-                                >
-                                  Permanent Closure Flag
-                                </span>
-                              )}
-                              <span
-                                className={`font-extrabold text-sm ${
-                                  isLight ? 'text-slate-950' : 'text-white'
-                                }`}
-                              >
-                                {meta.cleanLabel}
-                              </span>
-                              <span
-                                className={`font-mono-score font-extrabold ${
-                                  al.score_impact < 0
-                                    ? isLight
-                                      ? 'text-rose-600'
-                                      : 'text-rose-400'
-                                    : al.score_impact > 0
-                                    ? isLight
-                                      ? 'text-emerald-600'
-                                      : 'text-emerald-400'
-                                    : isLight
-                                    ? 'text-sky-700'
-                                    : 'text-sky-300'
-                                }`}
-                              >
-                                ({al.score_impact > 0 ? `+${al.score_impact}` : `${al.score_impact} pts`})
-                              </span>
-                            </div>
-
-                            <div
-                              className={`text-[11px] flex flex-wrap items-center gap-2 ${
-                                isLight ? 'text-slate-500' : 'text-zinc-400'
-                              }`}
-                            >
-                              <span className="inline-flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                {formatTimeAgo(al.created_at)}
-                              </span>
-                              <span>•</span>
-                              <span
-                                className={`font-semibold ${
-                                  isLight ? 'text-slate-700' : 'text-zinc-300'
-                                }`}
-                              >
-                                Confirmed by {meta.confirmations}{' '}
-                                {meta.confirmations === 1 ? 'parent' : 'parents'}
-                              </span>
-                              {!meta.isPermanent && (
-                                <>
-                                  <span>•</span>
-                                  <span>Auto-expires ({meta.ttlTag})</span>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Dual Resolution Controls */}
-                        <div
-                          className={`flex flex-wrap items-center gap-2 pt-2 border-t ${
-                            isLight ? 'border-slate-100' : 'border-white/[0.06]'
-                          }`}
-                        >
-                          <button
-                            disabled={busyAction}
-                            onClick={() => handleConfirmStillActive(selectedRink, al)}
-                            className={`px-3 py-1.5 rounded-full font-bold text-[11px] transition active:scale-95 ${
-                              isLight
-                                ? 'bg-slate-100 hover:bg-slate-200 text-slate-800'
-                                : 'bg-white/[0.06] hover:bg-white/[0.11] text-zinc-200'
-                            }`}
-                          >
-                            Still Active (+1 Confirm)
-                          </button>
-
-                          <button
-                            disabled={busyAction}
-                            onClick={() => handleResolveAlert(selectedRink, al, false)}
-                            className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full border font-extrabold text-[11px] transition active:scale-95 ${
-                              isLight
-                                ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
-                                : 'bg-emerald-400/15 hover:bg-emerald-400/25 text-emerald-300 border-emerald-400/35'
-                            }`}
-                          >
-                            <RotateCcw className="w-3 h-3" />
-                            <span>Mark Resolved</span>
-                          </button>
-
-                          <button
-                            onClick={() => {
-                              setStaffPinPromptAlertId(isStaffPromptOpen ? null : al.id);
-                              setStaffPinInput('');
-                            }}
-                            className={`ml-auto text-[11px] font-semibold underline ${
-                              isLight
-                                ? 'text-slate-500 hover:text-sky-700'
-                                : 'text-zinc-400 hover:text-cyan-300'
-                            }`}
-                          >
-                            Rink Staff PIN
-                          </button>
-                        </div>
-
-                        {isStaffPromptOpen && (
-                          <div className="flex items-center gap-2 pt-1">
-                            <input
-                              type="password"
-                              maxLength={4}
-                              placeholder="4-digit Staff PIN"
-                              value={staffPinInput}
-                              onChange={(e) => setStaffPinInput(e.target.value)}
-                              className={`w-36 border rounded-full px-3 py-1.5 text-xs focus:outline-none ${
-                                isLight
-                                  ? 'bg-white border-sky-400 text-slate-900'
-                                  : 'bg-[#0B0C0E] border-cyan-400/40 text-white'
-                              }`}
-                            />
-                            <button
-                              disabled={busyAction}
-                              onClick={() => {
-                                if (staffPinInput === RINK_STAFF_PIN || staffPinInput === FOUNDER_ADMIN_PIN) {
-                                  handleResolveAlert(selectedRink, al, true);
-                                } else {
-                                  showToast('Invalid Rink Staff PIN.');
-                                }
-                              }}
-                              className="px-3.5 py-1.5 rounded-full bg-cyan-400 text-zinc-950 font-extrabold text-[11px]"
-                            >
-                              Verify Resolved
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
 
             {/* ================================================================= */}
             {/* CROWDSOURCED FACILITY CONDITION & UPKEEP (25% PILLAR BLEND)       */}
@@ -2708,7 +2591,7 @@ export default function App() {
                         pillStyle = isLight
                           ? 'bg-rose-50/70 hover:bg-rose-100/70 border-rose-200 text-slate-900'
                           : 'bg-[#221B1E] hover:bg-[#2C2126] border-rose-400/25 text-zinc-100';
-                        badgeText = alreadyActive ? 'Active (Tap to Confirm)' : `${opt.impact} pts`;
+                        badgeText = alreadyActive ? 'Active (Confirm)' : `${opt.impact} pts`;
                         badgeColor = alreadyActive
                           ? isLight
                             ? 'text-amber-700'
@@ -2723,7 +2606,7 @@ export default function App() {
                         badgeText =
                           opt.type === 'facility_fact'
                             ? `${Number(selectedRink.corner_mats_confirmations) || 0}/${CORNER_MATS_THRESHOLD} Verified`
-                            : '0 pts · Info Tag';
+                            : '0 pts · Info';
                         badgeColor = isLight ? 'text-sky-700' : 'text-sky-300';
                       } else if (opt.type === 'positive') {
                         pillStyle = isLight
@@ -3736,7 +3619,7 @@ export default function App() {
                 Community Scores:
               </strong>{' '}
               Rink scores and live pulse updates reflect crowdsourced parent observations and
-              automatically expire after 4 to 48 hours unless confirmed permanent.
+              automatically expire after 3 to 24 hours unless confirmed permanent.
             </p>
             <p>
               <strong className={isLight ? 'text-slate-950' : 'text-white'}>
