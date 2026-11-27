@@ -3183,6 +3183,17 @@ export default function App() {
                   <strong className={isLight ? 'text-slate-950' : 'text-white'}>
                     {selectedRink.parking_lot_size || 'Standard Lot'}
                   </strong>
+                  {selectedRink.parking_is_paid && (
+                    <span
+                      className={`ml-1.5 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border inline-block align-middle ${
+                        isLight
+                          ? 'bg-amber-100 text-amber-800 border-amber-300'
+                          : 'bg-amber-400/20 text-amber-300 border-amber-400/35'
+                      }`}
+                    >
+                      💳 Paid
+                    </span>
+                  )}
                   {selectedRink.parking_bag_drop &&
                   selectedRink.parking_bag_drop.toLowerCase() !==
                     (selectedRink.parking_lot_size || '').toLowerCase()
