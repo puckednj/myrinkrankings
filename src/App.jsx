@@ -46,7 +46,7 @@ const CA_PROVINCES = [
 
 const SHOP_CHAINS = [
   'Pure Hockey',
-  'HockeyMonkey',
+  'MonkeySports',
   'Pro Hockey Life',
   'Source For Sports',
   'Independent',
