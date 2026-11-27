@@ -2062,10 +2062,10 @@ export default function App() {
               </div>
 
               {/* Sheet Pill + Right-Justified Hours Pill */}
-              <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+              <div className="flex items-center justify-between gap-2 pt-0.5">
                 {selectedRink.sheet_temp_notes ? (
                   <p
-                    className={`text-xs font-bold inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border ${
+                    className={`min-w-0 text-xs font-bold inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border leading-snug ${
                       isLight
                         ? 'bg-sky-50 text-sky-900 border-sky-200'
                         : 'bg-cyan-400/10 text-cyan-200 border-cyan-400/25'
@@ -2080,7 +2080,7 @@ export default function App() {
 
                 <button
                   onClick={() => setShowHoursModal(true)}
-                  className={`ml-auto shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-extrabold border transition active:scale-95 ${
+                  className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-extrabold border transition active:scale-95 ${
                     hasAnyHours(selectedRink)
                       ? isLight
                         ? 'bg-sky-50 hover:bg-sky-100 text-sky-800 border-sky-300'
