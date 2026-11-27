@@ -32,6 +32,14 @@ const PARKING_SIZE_OPTIONS = [
   'Huge Lot + Overflow',
 ];
 
+const US_STATES = [
+  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+  'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+  'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+  'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+  'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
+];
+
 // ============================================================================
 // WAZE-STYLE 6 CATEGORIES + STATE-FLIPPING OPTIONS (3h / 24h Auto-Reset)
 // Options sharing a `stateKey` flip/replace each other instead of stacking logs.
@@ -426,11 +434,11 @@ export default function App() {
   });
   const [savingHours, setSavingHours] = useState(false);
 
-  // Add Rink Form State
+  // Add Rink Form State (state blank by default)
   const [newRink, setNewRink] = useState({
     name: '',
     city: '',
-    state: 'NJ',
+    state: '',
     sheets: 1,
     parkingSize: 'Standard Lot',
     notes: '',
@@ -1225,7 +1233,7 @@ export default function App() {
 
   const handleAddRinkSubmit = async (e) => {
     e.preventDefault();
-    if (!newRink.name.trim() || !newRink.city.trim()) return;
+    if (!newRink.name.trim() || !newRink.city.trim() || !newRink.state) return;
     setSubmittingRink(true);
     try {
       const { error } = await supabase.from('pending_rinks').insert([
@@ -1242,7 +1250,7 @@ export default function App() {
       setNewRink({
         name: '',
         city: '',
-        state: 'NJ',
+        state: '',
         sheets: 1,
         parkingSize: 'Standard Lot',
         notes: '',
@@ -4036,7 +4044,7 @@ export default function App() {
                 <input
                   required
                   type="text"
-                  placeholder="e.g., Ice House of New Jersey"
+                  placeholder="e.g., Mennen Sports Arena"
                   value={newRink.name}
                   onChange={(e) => setNewRink({ ...newRink, name: e.target.value })}
                   className={`w-full border rounded-2xl px-4 py-2.5 focus:outline-none ${
@@ -4058,7 +4066,7 @@ export default function App() {
                   <input
                     required
                     type="text"
-                    placeholder="e.g., Hackensack"
+                    placeholder="e.g., Morristown"
                     value={newRink.city}
                     onChange={(e) => setNewRink({ ...newRink, city: e.target.value })}
                     className={`w-full border rounded-2xl px-4 py-2.5 focus:outline-none ${
@@ -4074,9 +4082,10 @@ export default function App() {
                       isLight ? 'text-slate-600' : 'text-zinc-400'
                     }`}
                   >
-                    State
+                    State *
                   </label>
                   <select
+                    required
                     value={newRink.state}
                     onChange={(e) => setNewRink({ ...newRink, state: e.target.value })}
                     className={`w-full border rounded-2xl px-3 py-2.5 focus:outline-none ${
@@ -4085,7 +4094,10 @@ export default function App() {
                         : 'bg-[#0F1114] border-white/[0.08] focus:border-cyan-400/50 text-white'
                     }`}
                   >
-                    {['NJ', 'NY', 'PA', 'CT', 'MA', 'DE', 'MD', 'OTHER'].map((s) => (
+                    <option value="" disabled>
+                      --
+                    </option>
+                    {US_STATES.map((s) => (
                       <option key={s} value={s}>
                         {s}
                       </option>
