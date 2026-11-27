@@ -3741,20 +3741,20 @@ export default function App() {
                         </a>
 
                         <a
-                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                            nearbyGearSupport.bigBoxSearchQuery
-                          )}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={`flex items-center justify-between gap-2 px-3 py-2 rounded-2xl border text-[11px] font-bold transition ${
-                            isLight
-                              ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-200'
-                              : 'bg-amber-400/10 hover:bg-amber-400/18 text-amber-200 border-amber-400/25'
-                          }`}
-                        >
-                          <div className="min-w-0">
-                            <p className="font-extrabold">
-                              ⚠️ No Hockey Shop Within {nearbyGearSupport.radiusLabel} — Emergency Tape & Laces
+  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+    nearbyGearSupport.bigBoxSearchQuery
+  )}`}
+  target="_blank"
+  rel="noopener noreferrer"
+  title={`${nearbyGearSupport.bigBoxName} (emergency tape/laces only)`}
+  className={`flex items-center justify-between gap-2 px-3 py-1.5 rounded-full border text-[11px] font-extrabold transition ${
+    isLight
+      ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-200'
+      : 'bg-amber-400/10 hover:bg-amber-400/18 text-amber-200 border-amber-400/25'
+  }`}
+>
+  <span className="truncate">
+    ⚠️ No Hockey Shop Within {nearbyGearSupport.radiusLabel} — Emergency Tape & Laces
                             </p>
                             <p className="text-[10px] opacity-80">
                               {nearbyGearSupport.bigBoxName} (emergency tape/laces only — no pro gear)
