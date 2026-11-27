@@ -1982,60 +1982,87 @@ export default function App() {
 
             {/* Modal Header */}
             <div
-              className={`flex items-start justify-between gap-3 border-b pb-4 ${
+              className={`space-y-2 border-b pb-4 ${
                 isLight ? 'border-slate-200' : 'border-white/[0.08]'
               }`}
             >
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    className={`text-xs font-bold px-2.5 py-0.5 rounded-full border inline-flex items-center gap-1 ${
-                      isLight
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                        : 'bg-emerald-400/15 text-emerald-300 border-emerald-400/30'
-                    }`}
-                  >
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    {selectedRink.verification_status}
-                  </span>
-                  <button
-                    onClick={(e) => toggleWatchRink(e, selectedRink)}
-                    className={`text-xs font-bold px-2.5 py-0.5 rounded-full border inline-flex items-center gap-1 transition ${
-                      watchedIds.includes(selectedRink.id)
-                        ? isLight
-                          ? 'bg-amber-100 text-amber-800 border-amber-300'
-                          : 'bg-amber-400/20 text-amber-200 border-amber-400/40'
-                        : isLight
-                        ? 'bg-white text-slate-700 border-slate-200 hover:border-amber-400'
-                        : 'bg-[#252932] text-zinc-300 border-white/[0.1] hover:border-amber-400/35'
-                    }`}
-                  >
-                    <Star
-                      className={`w-3 h-3 ${
-                        watchedIds.includes(selectedRink.id) ? 'fill-amber-400 text-amber-400' : ''
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={`text-xs font-bold px-2.5 py-0.5 rounded-full border inline-flex items-center gap-1 ${
+                        isLight
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : 'bg-emerald-400/15 text-emerald-300 border-emerald-400/30'
                       }`}
-                    />
-                    {watchedIds.includes(selectedRink.id) ? 'Watching Weekend' : 'Watch Rink'}
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      {selectedRink.verification_status}
+                    </span>
+                    <button
+                      onClick={(e) => toggleWatchRink(e, selectedRink)}
+                      className={`text-xs font-bold px-2.5 py-0.5 rounded-full border inline-flex items-center gap-1 transition ${
+                        watchedIds.includes(selectedRink.id)
+                          ? isLight
+                            ? 'bg-amber-100 text-amber-800 border-amber-300'
+                            : 'bg-amber-400/20 text-amber-200 border-amber-400/40'
+                          : isLight
+                          ? 'bg-white text-slate-700 border-slate-200 hover:border-amber-400'
+                          : 'bg-[#252932] text-zinc-300 border-white/[0.1] hover:border-amber-400/35'
+                      }`}
+                    >
+                      <Star
+                        className={`w-3 h-3 ${
+                          watchedIds.includes(selectedRink.id) ? 'fill-amber-400 text-amber-400' : ''
+                        }`}
+                      />
+                      {watchedIds.includes(selectedRink.id) ? 'Watching Weekend' : 'Watch Rink'}
+                    </button>
+                  </div>
+                  <h2
+                    className={`text-xl sm:text-2xl font-extrabold mt-2 ${
+                      isLight ? 'text-slate-950' : 'text-white'
+                    }`}
+                  >
+                    {selectedRink.name}
+                  </h2>
+                  <p
+                    className={`text-xs font-medium mt-0.5 ${
+                      isLight ? 'text-slate-500' : 'text-zinc-400'
+                    }`}
+                  >
+                    {selectedRink.city}, {selectedRink.state} • Baseline{' '}
+                    {selectedRink.baseline_score}/100
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2.5 shrink-0">
+                  <div
+                    className={`font-mono-score px-4 py-1.5 rounded-2xl border font-extrabold text-2xl ${
+                      getScoreTheme(selectedRink.live_score).badge
+                    }`}
+                  >
+                    {selectedRink.live_score}
+                    <span className="text-xs font-bold opacity-70">/100</span>
+                  </div>
+                  <button
+                    onClick={() => setSelectedRink(null)}
+                    className={`p-2.5 rounded-full transition ${
+                      isLight
+                        ? 'bg-slate-200/80 hover:bg-slate-300 text-slate-800'
+                        : 'bg-[#272B33] hover:bg-[#323741] text-zinc-200'
+                    }`}
+                  >
+                    <X className="w-5 h-5" />
                   </button>
                 </div>
-                <h2
-                  className={`text-xl sm:text-2xl font-extrabold mt-2 ${
-                    isLight ? 'text-slate-950' : 'text-white'
-                  }`}
-                >
-                  {selectedRink.name}
-                </h2>
-                <p
-                  className={`text-xs font-medium mt-0.5 ${
-                    isLight ? 'text-slate-500' : 'text-zinc-400'
-                  }`}
-                >
-                  {selectedRink.city}, {selectedRink.state} • Baseline{' '}
-                  {selectedRink.baseline_score}/100
-                </p>
-                {selectedRink.sheet_temp_notes && (
+              </div>
+
+              {/* Sheet Pill + Right-Justified Hours Pill */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                {selectedRink.sheet_temp_notes ? (
                   <p
-                    className={`text-xs font-bold mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border ${
+                    className={`text-xs font-bold inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border ${
                       isLight
                         ? 'bg-sky-50 text-sky-900 border-sky-200'
                         : 'bg-cyan-400/10 text-cyan-200 border-cyan-400/25'
@@ -2044,27 +2071,24 @@ export default function App() {
                     <Layers className="w-3.5 h-3.5 shrink-0" />
                     <span>{selectedRink.sheet_temp_notes}</span>
                   </p>
+                ) : (
+                  <div />
                 )}
-              </div>
 
-              <div className="flex items-center gap-2.5">
-                <div
-                  className={`font-mono-score px-4 py-1.5 rounded-2xl border font-extrabold text-2xl ${
-                    getScoreTheme(selectedRink.live_score).badge
-                  }`}
-                >
-                  {selectedRink.live_score}
-                  <span className="text-xs font-bold opacity-70">/100</span>
-                </div>
                 <button
-                  onClick={() => setSelectedRink(null)}
-                  className={`p-2.5 rounded-full transition ${
-                    isLight
-                      ? 'bg-slate-200/80 hover:bg-slate-300 text-slate-800'
-                      : 'bg-[#272B33] hover:bg-[#323741] text-zinc-200'
+                  onClick={() => setShowHoursModal(true)}
+                  className={`ml-auto shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-extrabold border transition active:scale-95 ${
+                    hasAnyHours(selectedRink)
+                      ? isLight
+                        ? 'bg-sky-50 hover:bg-sky-100 text-sky-800 border-sky-300'
+                        : 'bg-cyan-400/15 hover:bg-cyan-400/25 text-cyan-300 border-cyan-400/35'
+                      : isLight
+                      ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                      : 'bg-[#252932] hover:bg-[#2F3440] text-zinc-300 border-white/[0.1]'
                   }`}
                 >
-                  <X className="w-5 h-5" />
+                  <Clock className="w-3 h-3" />
+                  <span>Hours</span>
                 </button>
               </div>
             </div>
