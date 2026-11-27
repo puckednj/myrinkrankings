@@ -238,6 +238,9 @@ function formatMainCardSheets(rink) {
     const miniLabel = `${miniCount} ${miniCount === 1 ? 'Mini Rink' : 'Mini Rinks'}`;
     return `${regLabel} + ${miniLabel} (${total} Total)`;
   }
+  if (notes.includes('roller rink')) {
+    return `${regLabel} + 1 Roller Rink`;
+  }
   return regLabel;
 }
 
