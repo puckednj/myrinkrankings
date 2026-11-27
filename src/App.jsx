@@ -2686,7 +2686,7 @@ export default function App() {
                 <p>• Monitors: {selectedRink.locker_room_monitors}</p>
               </div>
 
-              {/* Pro Shop, 24/7 Vending & Food + Clean Hours Button */}
+              {/* Pro Shop, 24/7 Vending & Food */}
               <div
                 className={`rounded-[24px] p-4 space-y-1.5 border ${
                   isLight
@@ -2694,30 +2694,12 @@ export default function App() {
                     : 'bg-gradient-to-b from-[#1B1E24] to-[#15171C] border-white/[0.07] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] text-zinc-300'
                 }`}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <div
-                    className={`font-extrabold flex items-center gap-1.5 text-sm ${
-                      isLight ? 'text-sky-700' : 'text-cyan-300'
-                    }`}
-                  >
-                    <ShoppingBag className="w-4 h-4 shrink-0" />
-                    <span>Pro Shop, 24/7 Vending & Food</span>
-                  </div>
-                  <button
-                    onClick={() => setShowHoursModal(true)}
-                    className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border transition active:scale-95 ${
-                      hasAnyHours(selectedRink)
-                        ? isLight
-                          ? 'bg-sky-50 hover:bg-sky-100 text-sky-800 border-sky-300'
-                          : 'bg-cyan-400/15 hover:bg-cyan-400/25 text-cyan-300 border-cyan-400/35'
-                        : isLight
-                        ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
-                        : 'bg-[#252932] hover:bg-[#2F3440] text-zinc-300 border-white/[0.1]'
-                    }`}
-                  >
-                    <Clock className="w-2.5 h-2.5" />
-                    <span>Hours</span>
-                  </button>
+                <div
+                  className={`font-extrabold flex items-center gap-1.5 text-sm ${
+                    isLight ? 'text-sky-700' : 'text-cyan-300'
+                  }`}
+                >
+                  <ShoppingBag className="w-4 h-4" /> Pro Shop, 24/7 Vending & Food
                 </div>
                 <p>• Shop: {selectedRink.pro_shop_status}</p>
                 <p>
