@@ -6,7 +6,7 @@ import {
   Mail, MapPin, RefreshCw, CheckCircle2,
   Radio, Layers, ThermometerSnowflake, ChevronRight,
   Clock, Star, Info, Ban, Lock, ChevronLeft, Users, Tv, Car,
-  Sun, Moon, Building2, LocateFixed
+  Sun, Moon, Building2, LocateFixed, Store
 } from 'lucide-react';
 
 // ============================================================================
@@ -40,9 +40,20 @@ const US_STATES = [
   'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
 ];
 
+const CA_PROVINCES = [
+  'AB', 'BC', 'MB', 'NB', 'NL', 'NS', 'NT', 'NU', 'ON', 'PE', 'QC', 'SK', 'YT',
+];
+
+const SHOP_CHAINS = [
+  'Pure Hockey',
+  'HockeyMonkey',
+  'Pro Hockey Life',
+  'Source For Sports',
+  'Independent',
+];
+
 // ============================================================================
 // WAZE-STYLE 6 CATEGORIES + STATE-FLIPPING OPTIONS (3h / 24h Auto-Reset)
-// Options sharing a `stateKey` flip/replace each other instead of stacking logs.
 // ============================================================================
 const WAZE_CATEGORIES = [
   {
@@ -138,7 +149,6 @@ const WAZE_CATEGORIES = [
   },
 ];
 
-// Lookup map from option label -> stateKey so opposing alerts flip cleanly
 const LABEL_TO_STATE_KEY = (() => {
   const map = {};
   WAZE_CATEGORIES.forEach((cat) => {
@@ -161,6 +171,7 @@ const CONDITION_LABELS = {
 
 const CORNER_MATS_THRESHOLD = 3;
 const AT_RINK_RADIUS_MILES = 0.35;
+const BIG_BOX_FALLBACK_RADIUS_MILES = 15.0; // 15 miles (US) / ~25 km (Canada)
 const COOLDOWN_MS = 2 * 60 * 60 * 1000;
 const COOLDOWN_STORAGE_KEY = 'mrr_waze_cooldowns_v2';
 const CONDITION_VOTE_STORAGE_KEY = 'mrr_condition_votes_v1';
@@ -178,7 +189,7 @@ function calculateDistanceMiles(lat1, lon1, lat2, lon2) {
     return null;
   }
   const toRad = (deg) => (deg * Math.PI) / 180;
-  const R = 3958.8; // Earth radius in miles
+  const R = 3958.8;
   const dLat = toRad(Number(lat2) - Number(lat1));
   const dLon = toRad(Number(lon2) - Number(lon1));
   const a =
@@ -191,11 +202,15 @@ function calculateDistanceMiles(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-function formatMiles(miles) {
+// Formats miles for US rinks and kilometers for Canadian rinks
+function formatDistance(miles, country = 'US') {
   if (miles === null || miles === undefined || Number.isNaN(miles)) return null;
   if (miles < 0.2) return 'On-site';
-  if (miles < 10) return `${miles.toFixed(1)} mi`;
-  return `${Math.round(miles)} mi`;
+  if (country === 'CA') {
+    const km = miles * 1.60934;
+    return km < 10 ? `${km.toFixed(1)} km` : `${Math.round(km)} km`;
+  }
+  return miles < 10 ? `${miles.toFixed(1)} mi` : `${Math.round(miles)} mi`;
 }
 
 // Resize & compress large phone photos in-browser before uploading to Supabase
@@ -305,7 +320,6 @@ function formatMainCardSheets(rink) {
   return regLabel;
 }
 
-// Helper to check if a rink has any posted amenity/building hours
 function hasAnyHours(rink) {
   const h = rink?.amenity_hours;
   if (!h || typeof h !== 'object') return false;
@@ -317,7 +331,6 @@ function hasAnyHours(rink) {
   );
 }
 
-// Encode & decode metadata inside `rink_alerts.message`
 function encodeAlertMessage(cleanLabel, ttlTag, confirmations = 1) {
   return `${cleanLabel} [${ttlTag}] · ${confirmations} ${confirmations === 1 ? 'parent' : 'parents'}`;
 }
@@ -361,6 +374,7 @@ function formatTimeAgo(isoString) {
 
 export default function App() {
   const [rinks, setRinks] = useState([]);
+  const [hockeyShops, setHockeyShops] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [pendingRinks, setPendingRinks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -385,16 +399,13 @@ export default function App() {
   useEffect(() => {
     try {
       localStorage.setItem(THEME_STORAGE_KEY, isLight ? 'light' : 'dark');
-    } catch {
-      // ignore storage errors
-    }
+    } catch {}
     const bgHex = isLight ? '#F3F5F8' : '#0B0C0E';
     document.body.style.backgroundColor = bgHex;
     const metaTheme = document.querySelector('meta[name="theme-color"]');
     if (metaTheme) metaTheme.setAttribute('content', bgHex);
   }, [isLight]);
 
-  // Local device state: Cooldowns, Condition Votes & Watched Weekend Rinks
   const [cooldowns, setCooldowns] = useState(() => {
     try {
       const saved = localStorage.getItem(COOLDOWN_STORAGE_KEY);
@@ -422,8 +433,9 @@ export default function App() {
     }
   });
 
-  // Filters
+  // Filters (Dynamic across all 50 US states + Canadian provinces)
   const [searchQuery, setSearchQuery] = useState('');
+  const [countryFilter, setCountryFilter] = useState('ALL'); // 'ALL' | 'US' | 'CA'
   const [stateFilter, setStateFilter] = useState('ALL');
   const [quickFilter, setQuickFilter] = useState('ALL');
 
@@ -433,15 +445,15 @@ export default function App() {
   const [activeCategory, setActiveCategory] = useState(null);
   const [expandRinkAlerts, setExpandRinkAlerts] = useState(false);
 
-  // Live Reports Modal State (Opened via Live Pulses pill)
+  // Live Reports Modal State
   const [showLiveReportsModal, setShowLiveReportsModal] = useState(false);
-  const [liveReportSort, setLiveReportSort] = useState('WATCHED'); // 'WATCHED' | 'NEAREST' | 'NEWEST' | 'IMPACT'
+  const [liveReportSort, setLiveReportSort] = useState('WATCHED');
   const [liveReportCategory, setLiveReportCategory] = useState('ALL');
 
   const [showAddRink, setShowAddRink] = useState(false);
   const [showLegalModal, setShowLegalModal] = useState(false);
 
-  // Mobile Gesture & History Back-Button State (prevents edge-swipe from closing the app)
+  // Mobile Gesture & History Back-Button State
   const rinkSheetRef = useRef(null);
   const touchStartRef = useRef({ x: 0, y: 0, scrollTop: 0, time: 0 });
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -472,11 +484,27 @@ export default function App() {
   });
   const [savingHours, setSavingHours] = useState(false);
 
-  // Add Rink Form State (state blank by default)
+  // Founder Admin Add Standalone Hockey Shop State (US + Canada)
+  const [newShop, setNewShop] = useState({
+    name: '',
+    chain: 'Pure Hockey',
+    address: '',
+    city: '',
+    state: 'NJ',
+    country: 'US',
+    latitude: '',
+    longitude: '',
+    notes: 'Skate sharpening & full hockey gear',
+  });
+  const [savingShop, setSavingShop] = useState(false);
+  const [geocodingShop, setGeocodingShop] = useState(false);
+
+  // Add Rink Form State (US + Canada)
   const [newRink, setNewRink] = useState({
     name: '',
     city: '',
     state: '',
+    country: 'US',
     sheets: 1,
     parkingSize: 'Standard Lot',
     notes: '',
@@ -489,7 +517,7 @@ export default function App() {
     setTimeout(() => setToastMsg(''), 4000);
   }, []);
 
-  // Request user GPS coordinates (silent = true skips toast errors on passive startup check)
+  // Request user GPS coordinates
   const requestUserLocation = useCallback(
     ({ enableMainDistanceSort = false, enableLivePulseDistanceSort = false, silent = false } = {}) => {
       if (!navigator.geolocation) {
@@ -509,6 +537,7 @@ export default function App() {
 
           if (enableMainDistanceSort) {
             setSortByDistance(true);
+            setCountryFilter('ALL');
             setStateFilter('ALL');
             if (!silent) showToast('📍 Sorted rinks closest to your location');
           }
@@ -533,7 +562,6 @@ export default function App() {
     [showToast]
   );
 
-  // Passively grab coordinates on load ONLY if permission was already granted (for "You're at This Rink" banner)
   useEffect(() => {
     if (navigator.permissions && navigator.permissions.query) {
       navigator.permissions
@@ -543,9 +571,7 @@ export default function App() {
             requestUserLocation({ silent: true });
           }
         })
-        .catch(() => {
-          // ignore if browser doesn't support permissions query
-        });
+        .catch(() => {});
     }
   }, [requestUserLocation]);
 
@@ -558,6 +584,7 @@ export default function App() {
 
     if (userCoords) {
       setSortByDistance(true);
+      setCountryFilter('ALL');
       setStateFilter('ALL');
       showToast('📍 Sorted rinks closest to your location');
     } else {
@@ -573,7 +600,6 @@ export default function App() {
     }
   };
 
-  // Intercept mobile phone edge-swipe / hardware Back button so it closes modals instead of leaving the app
   useEffect(() => {
     const handlePopState = () => {
       if (ignoringPopRef.current) {
@@ -628,9 +654,7 @@ export default function App() {
     try {
       window.history.pushState({ mrrModal: name }, '');
       historyDepthRef.current += 1;
-    } catch {
-      // ignore history errors
-    }
+    } catch {}
   };
 
   const popModalHistory = () => {
@@ -652,9 +676,7 @@ export default function App() {
       const next = exists ? prev.filter((id) => id !== rink.id) : [...prev, rink.id];
       try {
         localStorage.setItem(WATCHED_STORAGE_KEY, JSON.stringify(next));
-      } catch {
-        // ignore storage errors
-      }
+      } catch {}
       showToast(
         exists
           ? `Removed ${rink.name} from Weekend Watchlist`
@@ -678,37 +700,36 @@ export default function App() {
     setCooldowns(updated);
     try {
       localStorage.setItem(COOLDOWN_STORAGE_KEY, JSON.stringify(updated));
-    } catch {
-      // ignore
-    }
+    } catch {}
   };
 
-  // Load rinks + alerts and automatically expire stale 3h/24h alerts while restoring score
+  // Load rinks + hockey_shops + alerts
   const fetchData = async () => {
     setLoading(true);
     setErrorMsg('');
     try {
-      const { data: rinksData, error: rinksError } = await supabase
-        .from('rinks')
-        .select('*')
-        .order('live_score', { ascending: false });
+      const [rinksRes, alertsRes, shopsRes] = await Promise.all([
+        supabase.from('rinks').select('*').order('live_score', { ascending: false }),
+        supabase
+          .from('rink_alerts')
+          .select('*')
+          .eq('status', 'active')
+          .order('created_at', { ascending: false })
+          .limit(100),
+        supabase.from('hockey_shops').select('*'),
+      ]);
 
-      if (rinksError) throw rinksError;
-
-      const { data: alertsData, error: alertsError } = await supabase
-        .from('rink_alerts')
-        .select('*')
-        .eq('status', 'active')
-        .order('created_at', { ascending: false })
-        .limit(100);
-
-      if (alertsError) throw alertsError;
+      if (rinksRes.error) throw rinksRes.error;
+      if (alertsRes.error) throw alertsRes.error;
+      if (!shopsRes.error && shopsRes.data) {
+        setHockeyShops(shopsRes.data);
+      }
 
       const now = Date.now();
       const validAlerts = [];
       const expiredAlerts = [];
 
-      (alertsData || []).forEach((al) => {
+      (alertsRes.data || []).forEach((al) => {
         const meta = parseAlertMeta(al);
         if (!meta.isPermanent && meta.ttlHours && al.created_at) {
           const ageMs = now - new Date(al.created_at).getTime();
@@ -720,14 +741,11 @@ export default function App() {
         validAlerts.push(al);
       });
 
-      let workingRinks = rinksData || [];
+      let workingRinks = rinksRes.data || [];
 
       if (expiredAlerts.length > 0) {
         const expiredIds = expiredAlerts.map((a) => a.id);
-        await supabase
-          .from('rink_alerts')
-          .update({ status: 'expired' })
-          .in('id', expiredIds);
+        await supabase.from('rink_alerts').update({ status: 'expired' }).in('id', expiredIds);
 
         const scoreAdjustments = {};
         expiredAlerts.forEach((a) => {
@@ -773,16 +791,31 @@ export default function App() {
         .order('created_at', { ascending: false })
         .limit(25);
       setPendingRinks(data || []);
-    } catch {
-      // ignore if table empty
-    }
+    } catch {}
   };
 
   useEffect(() => {
     fetchData();
   }, []);
 
-  // Attach computed GPS distance (in miles) to every rink when userCoords is available
+  // Dynamically discover active countries and US States / Canadian Provinces in the DB
+  const hasCanadianRinks = useMemo(
+    () => rinks.some((r) => (r.country || 'US') === 'CA'),
+    [rinks]
+  );
+
+  const availableRegions = useMemo(() => {
+    const uniqueRegions = Array.from(
+      new Set(
+        rinks
+          .filter((r) => countryFilter === 'ALL' || (r.country || 'US') === countryFilter)
+          .map((r) => (r.state || '').trim().toUpperCase())
+          .filter((code) => code.length === 2)
+      )
+    ).sort();
+    return ['ALL', ...uniqueRegions];
+  }, [rinks, countryFilter]);
+
   const rinksWithDistance = useMemo(() => {
     return rinks.map((r) => ({
       ...r,
@@ -792,7 +825,6 @@ export default function App() {
     }));
   }, [rinks, userCoords]);
 
-  // Automatic "You're at This Rink" detection (within 0.35 miles)
   const atCurrentRink = useMemo(() => {
     if (!userCoords || rinksWithDistance.length === 0) return null;
     let closest = null;
@@ -810,6 +842,7 @@ export default function App() {
   const filteredRinks = useMemo(() => {
     return rinksWithDistance
       .filter((r) => {
+        if (countryFilter !== 'ALL' && (r.country || 'US') !== countryFilter) return false;
         if (stateFilter !== 'ALL' && r.state !== stateFilter) return false;
         if (quickFilter === 'WATCHED' && !watchedIds.includes(r.id)) return false;
         if (quickFilter === 'HOME' && !r.is_home_rink) return false;
@@ -834,9 +867,8 @@ export default function App() {
         }
         return b.live_score - a.live_score;
       });
-  }, [rinksWithDistance, stateFilter, quickFilter, searchQuery, watchedIds, sortByDistance, userCoords]);
+  }, [rinksWithDistance, countryFilter, stateFilter, quickFilter, searchQuery, watchedIds, sortByDistance, userCoords]);
 
-  // Sorted & Filtered Live Reports for the Live Pulses Drawer
   const sortedLiveReports = useMemo(() => {
     const rinkMap = new Map(rinksWithDistance.map((r) => [r.id, r]));
 
@@ -875,39 +907,77 @@ export default function App() {
       });
   }, [alerts, liveReportCategory, liveReportSort, watchedIds, rinksWithDistance, userCoords]);
 
-  // Nearest rink with Skate Sharpening / Pro Shop (for emergency blade rescue when at a Tier 0/1 rink)
-  const nearestSharpeningRink = useMemo(() => {
+  // ============================================================================
+  // NORTH AMERICA PRO SHOP / SHARPENING RESCUE (US + Canada)
+  // Excludes big-box stores unless NO real hockey shop/rink shop is within 15 mi / 25 km
+  // ============================================================================
+  const nearbyGearSupport = useMemo(() => {
     if (!selectedRink) return null;
     if (getHockeyServiceTier(selectedRink) >= 2) return null;
-    if (
-      selectedRink.latitude === null ||
-      selectedRink.latitude === undefined ||
-      selectedRink.longitude === null ||
-      selectedRink.longitude === undefined
-    ) {
-      return null;
-    }
 
-    let best = null;
-    for (const candidate of rinksWithDistance) {
-      if (candidate.id === selectedRink.id) continue;
-      if (getHockeyServiceTier(candidate) < 2) continue;
-      const d = calculateDistanceMiles(
-        selectedRink.latitude,
-        selectedRink.longitude,
-        candidate.latitude,
-        candidate.longitude
-      );
-      if (d !== null && (!best || d < best.milesFromSelected)) {
-        best = { ...candidate, milesFromSelected: d };
+    const rinkCountry = selectedRink.country || 'US';
+    const hasCoords =
+      selectedRink.latitude !== null &&
+      selectedRink.latitude !== undefined &&
+      selectedRink.longitude !== null &&
+      selectedRink.longitude !== undefined;
+
+    let closestRetailShop = null;
+    let closestRinkShop = null;
+
+    if (hasCoords) {
+      for (const shop of hockeyShops) {
+        const d = calculateDistanceMiles(
+          selectedRink.latitude,
+          selectedRink.longitude,
+          shop.latitude,
+          shop.longitude
+        );
+        if (d !== null && (!closestRetailShop || d < closestRetailShop.milesAway)) {
+          closestRetailShop = { ...shop, milesAway: d };
+        }
+      }
+
+      for (const candidate of rinksWithDistance) {
+        if (candidate.id === selectedRink.id) continue;
+        if (getHockeyServiceTier(candidate) < 2) continue;
+        const d = calculateDistanceMiles(
+          selectedRink.latitude,
+          selectedRink.longitude,
+          candidate.latitude,
+          candidate.longitude
+        );
+        if (d !== null && (!closestRinkShop || d < closestRinkShop.milesAway)) {
+          closestRinkShop = { ...candidate, milesAway: d };
+        }
       }
     }
-    return best;
-  }, [selectedRink, rinksWithDistance]);
 
-  // ============================================================================
-  // CROWDSOURCED FACILITY CONDITION & AESTHETICS RATING (1-5 Progressive Blend)
-  // ============================================================================
+    const minRealDistanceMiles = Math.min(
+      closestRetailShop ? closestRetailShop.milesAway : Number.POSITIVE_INFINITY,
+      closestRinkShop ? closestRinkShop.milesAway : Number.POSITIVE_INFINITY
+    );
+
+    const showBigBoxTapeFallback = minRealDistanceMiles > BIG_BOX_FALLBACK_RADIUS_MILES;
+
+    return {
+      rinkCountry,
+      closestRetailShop,
+      closestRinkShop,
+      showBigBoxTapeFallback,
+      radiusLabel: rinkCountry === 'CA' ? '25 km' : '15 Mi',
+      proSearchQuery:
+        rinkCountry === 'CA'
+          ? `Pro Hockey Life or Source For Sports near ${selectedRink.city} ${selectedRink.state}`
+          : `Pure Hockey or hockey pro shop near ${selectedRink.city} ${selectedRink.state}`,
+      bigBoxName: rinkCountry === 'CA' ? 'Sport Chek / Canadian Tire' : "Dick's Sporting Goods",
+      bigBoxSearchQuery:
+        rinkCountry === 'CA'
+          ? `Sport Chek or Canadian Tire near ${selectedRink.city} ${selectedRink.state}`
+          : `Dick's Sporting Goods near ${selectedRink.city} ${selectedRink.state}`,
+    };
+  }, [selectedRink, hockeyShops, rinksWithDistance]);
+
   const handleRateCondition = async (rink, stars) => {
     if (busyAction) return;
 
@@ -948,9 +1018,7 @@ export default function App() {
       setConditionVotes(updatedVotes);
       try {
         localStorage.setItem(CONDITION_VOTE_STORAGE_KEY, JSON.stringify(updatedVotes));
-      } catch {
-        // ignore storage errors
-      }
+      } catch {}
 
       showToast(`Facility condition rated ${stars}/5 (${CONDITION_LABELS[stars]})`);
       await fetchData();
@@ -961,10 +1029,6 @@ export default function App() {
     }
   };
 
-  // ============================================================================
-  // STATE-FLIPPING WAZE REPORT HANDLER
-  // Replaces opposing/previous states in the same `stateKey` instead of stacking
-  // ============================================================================
   const handleWazeOptionTap = async (rink, categoryObj, option) => {
     if (busyAction) return;
 
@@ -974,7 +1038,6 @@ export default function App() {
       return;
     }
 
-    // Handle persistent crowdsourced facility facts (e.g., Corner Standing Mats)
     if (option.type === 'facility_fact') {
       setBusyAction(true);
       try {
@@ -1020,8 +1083,6 @@ export default function App() {
     }
 
     const rinkActiveAlerts = alerts.filter((al) => al.rink_id === rink.id);
-
-    // 1. Check if the exact same status is already active -> confirm it without deducting again
     const exactMatch = rinkActiveAlerts.find(
       (al) => parseAlertMeta(al).cleanLabel.toLowerCase() === option.label.toLowerCase()
     );
@@ -1047,7 +1108,6 @@ export default function App() {
         return;
       }
 
-      // 2. State-Flipping: find any active alert in the SAME `stateKey`
       const conflictingAlerts = option.stateKey
         ? rinkActiveAlerts.filter((al) => parseAlertMeta(al).stateKey === option.stateKey)
         : [];
@@ -1156,9 +1216,6 @@ export default function App() {
     }
   };
 
-  // ============================================================================
-  // FOUNDER ADMIN: 1-TAP PERMANENT CLOSURE APPROVAL & TRIGGER-SYNCED RECALC
-  // ============================================================================
   const handleAdminApproveClosure = async (alertItem) => {
     const targetRink = rinks.find((r) => r.id === alertItem.rink_id);
     if (!targetRink || busyAction) return;
@@ -1210,21 +1267,21 @@ export default function App() {
     }
   };
 
-  // ============================================================================
-  // FOUNDER ADMIN: 1-TAP APPROVE & PUBLISH SUBMITTED RINK
-  // ============================================================================
   const handleAdminPublishPendingRink = async (pendingItem) => {
     if (busyAction) return;
     setBusyAction(true);
     try {
       const sheetsCount = Math.max(1, Number(pendingItem.sheets) || 1);
       const lotSize = pendingItem.parking_lot_size || 'Standard Lot';
+      const detectedCountry =
+        pendingItem.country || (CA_PROVINCES.includes(pendingItem.state) ? 'CA' : 'US');
 
       const { error: insertErr } = await supabase.from('rinks').insert([
         {
           name: pendingItem.name,
           city: pendingItem.city,
           state: pendingItem.state || 'NJ',
+          country: detectedCountry,
           sheets: sheetsCount,
           has_mini_rink: false,
           corner_padded_mats: false,
@@ -1268,7 +1325,7 @@ export default function App() {
 
       await supabase.from('pending_rinks').delete().eq('id', pendingItem.id);
 
-      showToast(`Published ${pendingItem.name} to live leaderboard!`);
+      showToast(`Published ${pendingItem.name} (${pendingItem.state}) to live leaderboard!`);
       await Promise.all([fetchData(), fetchPendingRinks()]);
     } catch (err) {
       showToast('Could not publish rink: ' + err.message);
@@ -1277,9 +1334,6 @@ export default function App() {
     }
   };
 
-  // ============================================================================
-  // FOUNDER ADMIN: AUTO-COMPRESS & UPLOAD EXTERIOR PHOTO TO SUPABASE STORAGE
-  // ============================================================================
   const handleAdminUploadExterior = async (e) => {
     const file = e.target.files?.[0];
     if (!file || !adminPhotoRinkId) return;
@@ -1321,9 +1375,6 @@ export default function App() {
     }
   };
 
-  // ============================================================================
-  // FOUNDER ADMIN: EDIT SHEET COUNT, PARKING SIZE & FACILITY STATUS PILL
-  // ============================================================================
   const handleSelectAdminNotesRink = (rinkId) => {
     setAdminNotesRinkId(rinkId);
     const target = rinks.find((r) => String(r.id) === String(rinkId));
@@ -1359,9 +1410,6 @@ export default function App() {
     }
   };
 
-  // ============================================================================
-  // FOUNDER ADMIN: SAVE RINK & AMENITY HOURS
-  // ============================================================================
   const handleSelectAdminHoursRink = (rinkId) => {
     setAdminHoursRinkId(rinkId);
     const target = rinks.find((r) => String(r.id) === String(rinkId));
@@ -1412,6 +1460,81 @@ export default function App() {
     }
   };
 
+  // Auto-fills Latitude & Longitude from Address + City + State/Province + Country
+  const handleAutoGeocodeShop = async () => {
+    if (!newShop.city.trim() || !newShop.state) {
+      showToast('Enter City and State/Province first.');
+      return;
+    }
+    setGeocodingShop(true);
+    try {
+      const countryName = newShop.country === 'CA' ? 'Canada' : 'USA';
+      const query = [newShop.address, newShop.city, newShop.state, countryName]
+        .filter(Boolean)
+        .join(', ');
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`
+      );
+      const data = await res.json();
+      if (data && data.length > 0) {
+        setNewShop((prev) => ({
+          ...prev,
+          latitude: Number(data[0].lat).toFixed(5),
+          longitude: Number(data[0].lon).toFixed(5),
+        }));
+        showToast('Coordinates found!');
+      } else {
+        showToast('Address not matched — try City + State/Province only or paste lat/lng.');
+      }
+    } catch {
+      showToast('Could not auto-detect coordinates.');
+    } finally {
+      setGeocodingShop(false);
+    }
+  };
+
+  const handleAdminAddHockeyShop = async (e) => {
+    e.preventDefault();
+    if (!newShop.name.trim() || !newShop.city.trim() || !newShop.latitude || !newShop.longitude) {
+      showToast('Name, city, state/province, and coordinates are required.');
+      return;
+    }
+    setSavingShop(true);
+    try {
+      const { error } = await supabase.from('hockey_shops').insert([
+        {
+          name: newShop.name.trim(),
+          chain: newShop.chain,
+          address: newShop.address.trim() || null,
+          city: newShop.city.trim(),
+          state: newShop.state,
+          country: newShop.country,
+          latitude: Number(newShop.latitude),
+          longitude: Number(newShop.longitude),
+          has_sharpening: true,
+          has_full_gear: true,
+          notes: newShop.notes.trim(),
+        },
+      ]);
+      if (error) throw error;
+
+      showToast(`Added ${newShop.name} (${newShop.city}, ${newShop.state})!`);
+      setNewShop((prev) => ({
+        ...prev,
+        name: '',
+        address: '',
+        city: '',
+        latitude: '',
+        longitude: '',
+      }));
+      await fetchData();
+    } catch (err) {
+      showToast('Could not add hockey shop: ' + err.message);
+    } finally {
+      setSavingShop(false);
+    }
+  };
+
   const handleVerifyRink = async (rink) => {
     try {
       const { error } = await supabase
@@ -1434,11 +1557,13 @@ export default function App() {
     if (!newRink.name.trim() || !newRink.city.trim() || !newRink.state) return;
     setSubmittingRink(true);
     try {
+      const detectedCountry = CA_PROVINCES.includes(newRink.state) ? 'CA' : 'US';
       const { error } = await supabase.from('pending_rinks').insert([
         {
           name: newRink.name.trim(),
           city: newRink.city.trim(),
           state: newRink.state,
+          country: detectedCountry,
           sheets: Number(newRink.sheets) || 1,
           parking_lot_size: newRink.parkingSize || 'Standard Lot',
           submitted_notes: newRink.notes.trim(),
@@ -1451,6 +1576,7 @@ export default function App() {
         name: '',
         city: '',
         state: '',
+        country: 'US',
         sheets: 1,
         parkingSize: 'Standard Lot',
         notes: '',
@@ -1656,7 +1782,6 @@ export default function App() {
     popModalHistory();
   };
 
-  // Direct touch swipe-down or swipe-right on the individual rink card
   const handleCardTouchStart = (e) => {
     if (e.touches.length !== 1) return;
     const t = e.touches[0];
@@ -1675,13 +1800,11 @@ export default function App() {
     const dy = t.clientY - touchStartRef.current.y;
     const currentScroll = rinkSheetRef.current ? rinkSheetRef.current.scrollTop : 0;
 
-    // Horizontal swipe right to return to home page
     if (dx > 18 && Math.abs(dx) > Math.abs(dy) * 1.4) {
       setDragOffset({ x: Math.min(dx, 260), y: 0 });
       return;
     }
 
-    // Vertical pull down when scrolled to the very top of the card
     if (touchStartRef.current.scrollTop <= 2 && currentScroll <= 2 && dy > 14 && dy > Math.abs(dx) * 1.2) {
       setDragOffset({ x: 0, y: Math.min(dy, 280) });
     }
@@ -1784,7 +1907,6 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {/* 1-Tap Light / Dark Mode Toggle */}
             <button
               onClick={() => setIsLight((prev) => !prev)}
               aria-label={isLight ? 'Switch to Obsidian Dark Mode' : 'Switch to Glacial Light Mode'}
@@ -1818,7 +1940,7 @@ export default function App() {
 
       {/* Main Content */}
       <main className="relative z-10 flex-1 max-w-4xl w-full mx-auto px-4 py-5 space-y-5">
-        {/* 📍 Automatic "You're at This Rink" Banner (when within 0.35 mi) */}
+        {/* Automatic "You're at This Rink" Banner */}
         {atCurrentRink && (
           <div
             onClick={() => openRinkSheet(atCurrentRink)}
@@ -1890,7 +2012,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ⭐ My Weekend Rinks Watchlist Strip */}
+        {/* My Weekend Rinks Watchlist Strip */}
         {watchedRinksList.length > 0 && (
           <div
             className={`rounded-[26px] p-4 space-y-2.5 border ${
@@ -1915,7 +2037,7 @@ export default function App() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {watchedRinksList.map((wr) => {
                 const wrAlerts = alerts.filter((a) => a.rink_id === wr.id);
-                const distLabel = formatMiles(wr.distanceMiles);
+                const distLabel = formatDistance(wr.distanceMiles, wr.country || 'US');
                 return (
                   <div
                     key={wr.id}
@@ -1968,7 +2090,7 @@ export default function App() {
           </div>
         )}
 
-        {/* 2026 Bento Telemetry Header Strip (Live Pulses is Interactive!) */}
+        {/* 2026 Bento Telemetry Header Strip */}
         <div className="grid grid-cols-3 gap-2.5">
           <div
             className={`rounded-[22px] p-3.5 border ${
@@ -2001,7 +2123,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Clickable Live Pulses Telemetry Pill */}
           <button
             type="button"
             onClick={openLiveReportsDrawer}
@@ -2098,7 +2219,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Search + GPS Near Me Pill & Expressive Filter Controls */}
+        {/* Search + GPS Near Me Pill & Dynamic US/CA Region Filter Controls */}
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <div className="relative group flex-1 min-w-0">
@@ -2111,7 +2232,7 @@ export default function App() {
               />
               <input
                 type="text"
-                placeholder="Search rink name, town, or state..."
+                placeholder="Search rink name, town, state, or province..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className={`w-full rounded-full pl-11 pr-4 py-3 text-sm focus:outline-none transition-all border ${
@@ -2122,7 +2243,6 @@ export default function App() {
               />
             </div>
 
-            {/* GPS Near Me Pill */}
             <button
               type="button"
               onClick={handleNearMePillClick}
@@ -2152,34 +2272,65 @@ export default function App() {
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-2.5">
-            {/* State Segmented Control */}
-            <div
-              className={`inline-flex items-center gap-1 p-1 rounded-full border ${
-                isLight
-                  ? 'bg-white border-slate-200/90 shadow-sm'
-                  : 'bg-[#14161A] border-white/[0.07] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]'
-              }`}
-            >
-              {['ALL', 'NJ', 'NY', 'PA', 'CT'].map((st) => (
-                <button
-                  key={st}
-                  onClick={() => setStateFilter(st)}
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold transition-all active:scale-95 ${
-                    stateFilter === st
-                      ? isLight
-                        ? 'bg-slate-950 text-white shadow-sm'
-                        : 'bg-gradient-to-b from-cyan-300 to-cyan-400 text-zinc-950 shadow-[0_4px_12px_rgba(34,211,238,0.3)]'
-                      : isLight
-                      ? 'text-slate-600 hover:text-slate-950'
-                      : 'text-zinc-400 hover:text-white'
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar max-w-full">
+              {hasCanadianRinks && (
+                <div
+                  className={`inline-flex items-center gap-1 p-1 rounded-full border shrink-0 ${
+                    isLight
+                      ? 'bg-white border-slate-200/90 shadow-sm'
+                      : 'bg-[#14161A] border-white/[0.07] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]'
                   }`}
                 >
-                  {st}
-                </button>
-              ))}
+                  {['ALL', 'US', 'CA'].map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => {
+                        setCountryFilter(c);
+                        setStateFilter('ALL');
+                      }}
+                      className={`px-2.5 py-1.5 rounded-full text-xs font-extrabold transition-all active:scale-95 ${
+                        countryFilter === c
+                          ? isLight
+                            ? 'bg-sky-600 text-white shadow-sm'
+                            : 'bg-cyan-400 text-zinc-950'
+                          : isLight
+                          ? 'text-slate-600 hover:text-slate-950'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      {c === 'ALL' ? '🌎' : c}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div
+                className={`inline-flex items-center gap-1 p-1 rounded-full border overflow-x-auto no-scrollbar ${
+                  isLight
+                    ? 'bg-white border-slate-200/90 shadow-sm'
+                    : 'bg-[#14161A] border-white/[0.07] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]'
+                }`}
+              >
+                {availableRegions.map((reg) => (
+                  <button
+                    key={reg}
+                    onClick={() => setStateFilter(reg)}
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold shrink-0 transition-all active:scale-95 ${
+                      stateFilter === reg
+                        ? isLight
+                          ? 'bg-slate-950 text-white shadow-sm'
+                          : 'bg-gradient-to-b from-cyan-300 to-cyan-400 text-zinc-950 shadow-[0_4px_12px_rgba(34,211,238,0.3)]'
+                        : isLight
+                        ? 'text-slate-600 hover:text-slate-950'
+                        : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    {reg}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Expressive Feature Chips */}
             <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
               {[
                 { id: 'ALL', label: 'All Rinks' },
@@ -2235,7 +2386,7 @@ export default function App() {
               const isWatched = watchedIds.includes(rink.id);
               const serviceTier = getHockeyServiceTier(rink);
               const conditionScore = getBlendedConditionRating(rink);
-              const distanceLabel = formatMiles(rink.distanceMiles);
+              const distanceLabel = formatDistance(rink.distanceMiles, rink.country || 'US');
 
               return (
                 <div
@@ -2249,7 +2400,6 @@ export default function App() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3.5 min-w-0">
-                      {/* Rank Pill */}
                       <div
                         className={`font-mono-score w-10 h-10 rounded-2xl border flex items-center justify-center font-extrabold text-sm shrink-0 mt-0.5 ${theme.rank}`}
                       >
@@ -2302,7 +2452,6 @@ export default function App() {
                           )}
                         </div>
 
-                        {/* Line 1: Location + GPS Distance Badge */}
                         <p
                           className={`text-xs mt-1 flex flex-wrap items-center gap-1.5 font-medium ${
                             isLight ? 'text-slate-500' : 'text-zinc-400'
@@ -2315,6 +2464,7 @@ export default function App() {
                           />
                           <span>
                             {rink.city}, {rink.state}
+                            {(rink.country || 'US') === 'CA' ? ' · Canada' : ''}
                           </span>
                           {distanceLabel && (
                             <span
@@ -2329,7 +2479,6 @@ export default function App() {
                           )}
                         </p>
 
-                        {/* Line 2: Ice Sheets & Total Building Capacity */}
                         <p
                           className={`text-xs mt-0.5 flex items-center gap-1.5 font-semibold ${
                             isLight ? 'text-sky-700' : 'text-cyan-300/90'
@@ -2345,7 +2494,6 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* 2026 Glowing Tonal Score Pill + Compact Right-Aligned Watch Action */}
                     <div className="text-right shrink-0 flex flex-col items-end">
                       <div
                         className={`font-mono-score inline-flex items-baseline gap-1 px-3.5 py-1.5 rounded-2xl border font-extrabold text-xl ${theme.badge}`}
@@ -2409,7 +2557,6 @@ export default function App() {
                       {rink.inside_temp_rating}
                     </span>
 
-                    {/* 4-Tier Hockey Services Pill */}
                     <span
                       className={`px-3 py-1 rounded-full border ${
                         serviceTier === 3
@@ -2435,7 +2582,6 @@ export default function App() {
                         : 'No Pro Shop / Sharpening'}
                     </span>
 
-                    {/* Facility Condition Score Pill */}
                     <span
                       className={`px-3 py-1 rounded-full border ${
                         conditionScore >= 3.8
@@ -2460,7 +2606,6 @@ export default function App() {
                       📺 {rink.streaming_provider}
                     </span>
 
-                    {/* Only display Corner Mats once 3+ parents verify spectator corners */}
                     {rink.corner_padded_mats && (
                       <span
                         className={`px-3 py-1 rounded-full border ${
@@ -2533,7 +2678,7 @@ export default function App() {
       </footer>
 
       {/* ===================================================================== */}
-      {/* SORTABLE LIVE PULSES MODAL (Opened by tapping Live Pulses pill)       */}
+      {/* SORTABLE LIVE PULSES MODAL                                            */}
       {/* ===================================================================== */}
       {showLiveReportsModal && (
         <div
@@ -2548,7 +2693,6 @@ export default function App() {
                 : 'bg-gradient-to-b from-[#1E2127] to-[#121418] border-white/[0.12] shadow-2xl text-zinc-100'
             }`}
           >
-            {/* Drawer Header */}
             <div
               className={`p-5 pb-3.5 border-b space-y-3 shrink-0 ${
                 isLight ? 'border-slate-200 bg-white/80' : 'border-white/[0.08] bg-[#181B20]/80'
@@ -2588,7 +2732,6 @@ export default function App() {
                 </button>
               </div>
 
-              {/* Sort Controls (Includes GPS Nearest First) */}
               <div className="flex flex-wrap items-center gap-1.5">
                 <button
                   type="button"
@@ -2631,7 +2774,6 @@ export default function App() {
                 ))}
               </div>
 
-              {/* Category Filter Pills */}
               <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5">
                 {[
                   { id: 'ALL', label: 'All Categories' },
@@ -2661,7 +2803,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Filtered & Sorted Reports List */}
             <div className="p-4 sm:p-5 overflow-y-auto space-y-2.5 flex-1">
               {sortedLiveReports.length === 0 ? (
                 <div
@@ -2685,7 +2826,9 @@ export default function App() {
                   const isWatched = target && watchedIds.includes(target.id);
                   const isNeg = al.score_impact < 0;
                   const isPos = al.score_impact > 0;
-                  const distLabel = target ? formatMiles(target.distanceMiles) : null;
+                  const distLabel = target
+                    ? formatDistance(target.distanceMiles, target.country || 'US')
+                    : null;
 
                   return (
                     <div
@@ -2886,16 +3029,18 @@ export default function App() {
                     }`}
                   >
                     {selectedRink.city}, {selectedRink.state}
+                    {(selectedRink.country || 'US') === 'CA' ? ', Canada' : ''}
                     {userCoords &&
                       selectedRink.latitude &&
                       selectedRink.longitude &&
-                      ` • ${formatMiles(
+                      ` • ${formatDistance(
                         calculateDistanceMiles(
                           userCoords.lat,
                           userCoords.lng,
                           selectedRink.latitude,
                           selectedRink.longitude
-                        )
+                        ),
+                        selectedRink.country || 'US'
                       )} away`}{' '}
                     • Baseline {selectedRink.baseline_score}/100
                   </p>
@@ -2923,7 +3068,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Sheet Pill + Right-Justified Hours Pill (Always Same Row) */}
               <div className="flex items-center justify-between gap-2 pt-0.5">
                 {selectedRink.sheet_temp_notes ? (
                   <p
@@ -2958,9 +3102,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* ================================================================= */}
-            {/* COLLAPSIBLE LIVE STATUS STRIP (1-Line Summary When 2+ Reports)    */}
-            {/* ================================================================= */}
+            {/* COLLAPSIBLE LIVE STATUS STRIP */}
             {selectedRinkAlerts.length > 0 && (() => {
               const sortedSheetAlerts = [...selectedRinkAlerts].sort((a, b) => {
                 const aNeg = a.score_impact < 0 ? 1 : 0;
@@ -3001,7 +3143,6 @@ export default function App() {
                 };
               };
 
-              // Collapsed 1-Line Summary Bar when 2+ alerts are active
               if (isMulti && !expandRinkAlerts) {
                 const topStyle = getAlertRowStyle(topAlert, topMeta);
                 return (
@@ -3036,7 +3177,6 @@ export default function App() {
                 );
               }
 
-              // Expanded View (or Single Alert View)
               return (
                 <div className="space-y-1.5">
                   {isMulti && (
@@ -3097,9 +3237,7 @@ export default function App() {
               );
             })()}
 
-            {/* ================================================================= */}
-            {/* FACILITY EXTERIOR PHOTO ("HAVE I BEEN HERE?" RECOGNITION BANNER)  */}
-            {/* ================================================================= */}
+            {/* FACILITY EXTERIOR PHOTO */}
             <div
               className={`relative overflow-hidden rounded-[24px] border ${
                 isLight ? 'border-slate-200 bg-slate-100' : 'border-white/[0.08] bg-[#0F1114]'
@@ -3176,9 +3314,7 @@ export default function App() {
               )}
             </div>
 
-            {/* ================================================================= */}
-            {/* CROWDSOURCED FACILITY CONDITION & UPKEEP (25% PILLAR BLEND)       */}
-            {/* ================================================================= */}
+            {/* CROWDSOURCED FACILITY CONDITION & UPKEEP */}
             <div
               className={`rounded-[24px] p-4 space-y-2.5 border ${
                 isLight
@@ -3241,9 +3377,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* ================================================================= */}
-            {/* WAZE-STYLE 6-CATEGORY REPORT & UPDATE ENGINE                      */}
-            {/* ================================================================= */}
+            {/* WAZE-STYLE 6-CATEGORY REPORT & UPDATE ENGINE */}
             <div
               className={`rounded-[24px] p-4 space-y-3.5 border ${
                 isLight
@@ -3498,9 +3632,9 @@ export default function App() {
                 <p>• Monitors: {selectedRink.locker_room_monitors}</p>
               </div>
 
-              {/* Pro Shop, 24/7 Vending & Food */}
+              {/* Pro Shop, 24/7 Vending & Food + North America Hockey Shop / Sharpening Rescue */}
               <div
-                className={`rounded-[24px] p-4 space-y-1.5 border ${
+                className={`rounded-[24px] p-4 space-y-2 border ${
                   isLight
                     ? 'bg-white border-slate-200 shadow-sm text-slate-700'
                     : 'bg-gradient-to-b from-[#1B1E24] to-[#15171C] border-white/[0.07] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] text-zinc-300'
@@ -3514,25 +3648,125 @@ export default function App() {
                   <ShoppingBag className="w-4 h-4" /> Pro Shop, 24/7 Vending & Food
                 </div>
                 <p>• Shop: {selectedRink.pro_shop_status}</p>
-                {nearestSharpeningRink && (
-                  <p className="pt-0.5">
-                    <button
-                      type="button"
-                      onClick={() => openRinkSheet(nearestSharpeningRink)}
-                      className={`inline-flex items-center gap-1 text-[11px] font-extrabold px-2.5 py-1 rounded-full border transition active:scale-95 ${
-                        isLight
-                          ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
-                          : 'bg-emerald-400/15 hover:bg-emerald-400/25 text-emerald-300 border-emerald-400/30'
-                      }`}
-                    >
-                      <span>
-                        📍 Nearest Sharpening: {nearestSharpeningRink.name} (
-                        {formatMiles(nearestSharpeningRink.milesFromSelected)})
-                      </span>
-                      <ChevronRight className="w-3 h-3" />
-                    </button>
-                  </p>
+
+                {/* Nearby Dedicated Hockey Shop & Nearest Rink Pro Shop Rescue */}
+                {nearbyGearSupport && (
+                  <div className="space-y-1.5 pt-0.5">
+                    {nearbyGearSupport.closestRetailShop && (
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                          `${nearbyGearSupport.closestRetailShop.name} ${
+                            nearbyGearSupport.closestRetailShop.address || ''
+                          } ${nearbyGearSupport.closestRetailShop.city} ${
+                            nearbyGearSupport.closestRetailShop.state
+                          }`
+                        )}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`flex items-center justify-between gap-2 px-3 py-2 rounded-2xl border text-[11px] font-extrabold transition active:scale-[0.99] ${
+                          isLight
+                            ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border-emerald-200'
+                            : 'bg-emerald-400/12 hover:bg-emerald-400/20 text-emerald-200 border-emerald-400/30'
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <Store className="w-3.5 h-3.5 shrink-0 text-emerald-500" />
+                            <span className="truncate">
+                              {nearbyGearSupport.closestRetailShop.name} (
+                              {formatDistance(
+                                nearbyGearSupport.closestRetailShop.milesAway,
+                                nearbyGearSupport.rinkCountry
+                              )}
+                              )
+                            </span>
+                          </div>
+                          <p
+                            className={`text-[10px] font-semibold mt-0.5 truncate ${
+                              isLight ? 'text-emerald-700' : 'text-emerald-300/80'
+                            }`}
+                          >
+                            Skate sharpening & full hockey gear ·{' '}
+                            {nearbyGearSupport.closestRetailShop.city},{' '}
+                            {nearbyGearSupport.closestRetailShop.state}
+                          </p>
+                        </div>
+                        <span className="shrink-0 inline-flex items-center gap-1 underline">
+                          Maps <ExternalLink className="w-3 h-3" />
+                        </span>
+                      </a>
+                    )}
+
+                    {nearbyGearSupport.closestRinkShop && (
+                      <button
+                        type="button"
+                        onClick={() => openRinkSheet(nearbyGearSupport.closestRinkShop)}
+                        className={`w-full flex items-center justify-between gap-2 px-3 py-1.5 rounded-2xl border text-left text-[11px] font-bold transition active:scale-[0.99] ${
+                          isLight
+                            ? 'bg-sky-50/90 hover:bg-sky-100 text-sky-900 border-sky-200'
+                            : 'bg-cyan-400/10 hover:bg-cyan-400/18 text-cyan-200 border-cyan-400/25'
+                        }`}
+                      >
+                        <span className="truncate">
+                          🏒 Nearest Rink Shop: {nearbyGearSupport.closestRinkShop.name} (
+                          {formatDistance(
+                            nearbyGearSupport.closestRinkShop.milesAway,
+                            nearbyGearSupport.rinkCountry
+                          )}
+                          )
+                        </span>
+                        <ChevronRight className="w-3.5 h-3.5 shrink-0" />
+                      </button>
+                    )}
+
+                    {/* Emergency Big-Box Tape/Laces Fallback ONLY when > 15 mi / 25 km from any real hockey shop */}
+                    {nearbyGearSupport.showBigBoxTapeFallback && (
+                      <div className="space-y-1.5">
+                        <a
+                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                            nearbyGearSupport.proSearchQuery
+                          )}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`flex items-center justify-between gap-2 px-3 py-2 rounded-2xl border text-[11px] font-extrabold transition ${
+                            isLight
+                              ? 'bg-sky-50 hover:bg-sky-100 text-sky-900 border-sky-200'
+                              : 'bg-cyan-400/10 hover:bg-cyan-400/18 text-cyan-200 border-cyan-400/25'
+                          }`}
+                        >
+                          <span>
+                            🔍 Search Hockey Pro Shops Near {selectedRink.city}, {selectedRink.state}
+                          </span>
+                          <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                        </a>
+
+                        <a
+                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                            nearbyGearSupport.bigBoxSearchQuery
+                          )}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`flex items-center justify-between gap-2 px-3 py-2 rounded-2xl border text-[11px] font-bold transition ${
+                            isLight
+                              ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-200'
+                              : 'bg-amber-400/10 hover:bg-amber-400/18 text-amber-200 border-amber-400/25'
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <p className="font-extrabold">
+                              ⚠️ No Hockey Shop Within {nearbyGearSupport.radiusLabel} — Emergency Tape & Laces
+                            </p>
+                            <p className="text-[10px] opacity-80">
+                              {nearbyGearSupport.bigBoxName} (emergency tape/laces only — no pro gear)
+                            </p>
+                          </div>
+                          <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                        </a>
+                      </div>
+                    )}
+                  </div>
                 )}
+
                 <p>
                   • 24/7 Gear Vending:{' '}
                   <strong className={isLight ? 'text-slate-950' : 'text-white'}>
@@ -3847,7 +4081,7 @@ export default function App() {
       )}
 
       {/* ===================================================================== */}
-      {/* FOUNDER ADMIN MODAL (PIN-Protected Notes, Photos, Hours & Queue)      */}
+      {/* FOUNDER ADMIN MODAL                                                   */}
       {/* ===================================================================== */}
       {showAdminPinModal && (
         <div
@@ -3903,9 +4137,8 @@ export default function App() {
                 className="space-y-3 text-sm"
               >
                 <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
-                  Enter your 4-digit Founder PIN to update sheet status pills, parking sizes, upload
-                  exterior photos, edit amenity hours, review permanent closure flags, and publish
-                  newly submitted rinks.
+                  Enter your 4-digit Founder PIN to manage rinks, add standalone hockey shops across
+                  the US & Canada, upload exterior photos, edit amenity hours, and publish new rinks.
                 </p>
                 <input
                   type="password"
@@ -3933,7 +4166,165 @@ export default function App() {
               </form>
             ) : (
               <div className="space-y-5 text-xs">
-                {/* Edit Sheet Count, Parking Size & Facility Status Pill */}
+                {/* Add Standalone Hockey Shop (All 50 US States + Canada) */}
+                <div
+                  className={`space-y-2.5 border rounded-2xl p-3.5 ${
+                    isLight ? 'bg-emerald-50/70 border-emerald-200' : 'bg-[#0F1114] border-emerald-400/25'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <h4
+                      className={`font-extrabold uppercase tracking-wider ${
+                        isLight ? 'text-emerald-800' : 'text-emerald-300'
+                      }`}
+                    >
+                      Add Hockey Shop / Sharpening ({hockeyShops.length} active)
+                    </h4>
+                    <span className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
+                      US & Canada
+                    </span>
+                  </div>
+
+                  <form onSubmit={handleAdminAddHockeyShop} className="space-y-2">
+                    <div className="grid grid-cols-3 gap-2">
+                      <input
+                        type="text"
+                        required
+                        placeholder="Shop Name (e.g., Pure Hockey — Edina)"
+                        value={newShop.name}
+                        onChange={(e) => setNewShop({ ...newShop, name: e.target.value })}
+                        className={`col-span-2 border rounded-xl px-3 py-2 text-xs font-bold focus:outline-none ${
+                          isLight
+                            ? 'bg-white border-slate-300 text-slate-900'
+                            : 'bg-[#181B20] border-white/[0.1] text-white'
+                        }`}
+                      />
+                      <select
+                        value={newShop.chain}
+                        onChange={(e) => setNewShop({ ...newShop, chain: e.target.value })}
+                        className={`border rounded-xl px-2.5 py-2 text-xs font-bold focus:outline-none ${
+                          isLight
+                            ? 'bg-white border-slate-300 text-slate-900'
+                            : 'bg-[#181B20] border-white/[0.1] text-white'
+                        }`}
+                      >
+                        {SHOP_CHAINS.map((ch) => (
+                          <option key={ch} value={ch}>
+                            {ch}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <input
+                      type="text"
+                      placeholder="Street Address (optional, helps exact pin)"
+                      value={newShop.address}
+                      onChange={(e) => setNewShop({ ...newShop, address: e.target.value })}
+                      className={`w-full border rounded-xl px-3 py-2 text-xs focus:outline-none ${
+                        isLight
+                          ? 'bg-white border-slate-300 text-slate-900'
+                          : 'bg-[#181B20] border-white/[0.1] text-white'
+                      }`}
+                    />
+
+                    <div className="grid grid-cols-3 gap-2">
+                      <input
+                        type="text"
+                        required
+                        placeholder="City"
+                        value={newShop.city}
+                        onChange={(e) => setNewShop({ ...newShop, city: e.target.value })}
+                        className={`col-span-2 border rounded-xl px-3 py-2 text-xs font-bold focus:outline-none ${
+                          isLight
+                            ? 'bg-white border-slate-300 text-slate-900'
+                            : 'bg-[#181B20] border-white/[0.1] text-white'
+                        }`}
+                      />
+                      <select
+                        value={newShop.state}
+                        onChange={(e) => {
+                          const code = e.target.value;
+                          const detectedCountry = CA_PROVINCES.includes(code) ? 'CA' : 'US';
+                          setNewShop({ ...newShop, state: code, country: detectedCountry });
+                        }}
+                        className={`border rounded-xl px-2.5 py-2 text-xs font-bold focus:outline-none ${
+                          isLight
+                            ? 'bg-white border-slate-300 text-slate-900'
+                            : 'bg-[#181B20] border-white/[0.1] text-white'
+                        }`}
+                      >
+                        <optgroup label="United States">
+                          {US_STATES.map((st) => (
+                            <option key={st} value={st}>
+                              {st}
+                            </option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Canada">
+                          {CA_PROVINCES.map((prov) => (
+                            <option key={prov} value={prov}>
+                              {prov} (CA)
+                            </option>
+                          ))}
+                        </optgroup>
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 items-center">
+                      <input
+                        type="text"
+                        required
+                        placeholder="Latitude"
+                        value={newShop.latitude}
+                        onChange={(e) => setNewShop({ ...newShop, latitude: e.target.value })}
+                        className={`border rounded-xl px-3 py-2 text-xs font-mono-score focus:outline-none ${
+                          isLight
+                            ? 'bg-white border-slate-300 text-slate-900'
+                            : 'bg-[#181B20] border-white/[0.1] text-white'
+                        }`}
+                      />
+                      <input
+                        type="text"
+                        required
+                        placeholder="Longitude"
+                        value={newShop.longitude}
+                        onChange={(e) => setNewShop({ ...newShop, longitude: e.target.value })}
+                        className={`border rounded-xl px-3 py-2 text-xs font-mono-score focus:outline-none ${
+                          isLight
+                            ? 'bg-white border-slate-300 text-slate-900'
+                            : 'bg-[#181B20] border-white/[0.1] text-white'
+                        }`}
+                      />
+                      <button
+                        type="button"
+                        disabled={geocodingShop}
+                        onClick={handleAutoGeocodeShop}
+                        className={`py-2 px-2.5 rounded-xl font-extrabold text-[11px] border transition ${
+                          isLight
+                            ? 'bg-white hover:bg-slate-100 text-slate-800 border-slate-300'
+                            : 'bg-[#181B20] hover:bg-[#22262E] text-cyan-300 border-cyan-400/30'
+                        }`}
+                      >
+                        {geocodingShop ? 'Finding...' : '📍 Find GPS'}
+                      </button>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={savingShop}
+                      className={`w-full py-2.5 px-4 rounded-full font-extrabold text-xs transition ${
+                        isLight
+                          ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                          : 'bg-emerald-400 hover:bg-emerald-300 text-zinc-950'
+                      }`}
+                    >
+                      {savingShop ? 'Saving Shop...' : 'Save Hockey Shop'}
+                    </button>
+                  </form>
+                </div>
+
+                {/* Edit Sheets, Parking & Status Pill */}
                 <div
                   className={`space-y-2.5 border rounded-2xl p-3.5 ${
                     isLight ? 'bg-amber-50/70 border-amber-200' : 'bg-[#0F1114] border-amber-400/25'
@@ -4285,31 +4676,27 @@ export default function App() {
                                 isLight ? 'text-rose-700' : 'text-rose-300'
                               }`}
                             >
-                              {meta.cleanLabel}
-                            </p>
-                            <p className={`mt-0.5 ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
-                              Flagged {formatTimeAgo(flag.created_at)} • Confirmed by{' '}
-                              {meta.confirmations}
+                              {meta.cleanLabel} · {meta.confirmations} parent(s)
                             </p>
                           </div>
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex gap-2">
                             <button
                               disabled={busyAction}
                               onClick={() => handleAdminApproveClosure(flag)}
-                              className="px-3.5 py-2 rounded-full bg-rose-500 hover:bg-rose-400 text-white font-extrabold"
+                              className="flex-1 bg-rose-600 hover:bg-rose-500 text-white font-extrabold py-2 rounded-full"
                             >
-                              Approve & Update Baseline
+                              Approve & Recalculate
                             </button>
                             <button
                               disabled={busyAction}
                               onClick={() => target && handleResolveAlert(target, flag, true)}
-                              className={`px-3.5 py-2 rounded-full font-bold ${
+                              className={`px-4 py-2 rounded-full font-bold ${
                                 isLight
-                                  ? 'bg-slate-200 hover:bg-slate-300 text-slate-800'
+                                  ? 'bg-slate-200 hover:bg-slate-300 text-slate-900'
                                   : 'bg-[#242830] hover:bg-[#2F343E] text-zinc-200'
                               }`}
                             >
-                              Dismiss (False Alarm)
+                              Reject
                             </button>
                           </div>
                         </div>
@@ -4318,18 +4705,14 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Submitted Missing Rinks */}
-                <div
-                  className={`space-y-2.5 border-t pt-4 ${
-                    isLight ? 'border-slate-200' : 'border-white/[0.08]'
-                  }`}
-                >
+                {/* Pending User-Submitted Rinks */}
+                <div className="space-y-2.5">
                   <h4
                     className={`font-extrabold uppercase tracking-wider ${
-                      isLight ? 'text-sky-700' : 'text-cyan-300'
+                      isLight ? 'text-emerald-700' : 'text-emerald-300'
                     }`}
                   >
-                    Submitted Missing Rinks ({pendingRinks.length})
+                    Pending User-Submitted Rinks ({pendingRinks.length})
                   </h4>
                   {pendingRinks.length === 0 ? (
                     <p
@@ -4337,7 +4720,7 @@ export default function App() {
                         isLight ? 'text-slate-500 bg-slate-100' : 'text-zinc-500 bg-[#0F1114]'
                       }`}
                     >
-                      No new rink submissions yet.
+                      No new rink submissions waiting.
                     </p>
                   ) : (
                     pendingRinks.map((pr) => (
@@ -4345,27 +4728,38 @@ export default function App() {
                         key={pr.id}
                         className={`border rounded-2xl p-3.5 space-y-2.5 ${
                           isLight
-                            ? 'bg-slate-50 border-slate-200'
-                            : 'bg-[#0F1114] border-white/[0.08]'
+                            ? 'bg-emerald-50/70 border-emerald-200'
+                            : 'bg-[#0F1114] border-emerald-400/25'
                         }`}
                       >
                         <div>
-                          <p className={`font-extrabold text-sm ${isLight ? 'text-slate-950' : 'text-white'}`}>
-                            {pr.name} ({pr.city}, {pr.state}) • {pr.sheets || 1} Sheet(s) •{' '}
+                          <p
+                            className={`font-extrabold text-sm ${
+                              isLight ? 'text-slate-950' : 'text-white'
+                            }`}
+                          >
+                            {pr.name}
+                          </p>
+                          <p className={isLight ? 'text-slate-600' : 'text-zinc-400'}>
+                            {pr.city}, {pr.state} • {pr.sheets} sheet(s) •{' '}
                             {pr.parking_lot_size || 'Standard Lot'}
                           </p>
                           {pr.submitted_notes && (
-                            <p className={`mt-1 ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
-                              {pr.submitted_notes}
+                            <p
+                              className={`italic mt-0.5 ${
+                                isLight ? 'text-slate-500' : 'text-zinc-500'
+                              }`}
+                            >
+                              "{pr.submitted_notes}"
                             </p>
                           )}
                         </div>
                         <button
                           disabled={busyAction}
                           onClick={() => handleAdminPublishPendingRink(pr)}
-                          className="px-3.5 py-2 rounded-full bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-extrabold"
+                          className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold py-2 rounded-full"
                         >
-                          Approve & Publish to Live Board
+                          Publish to Live Leaderboard
                         </button>
                       </div>
                     ))
@@ -4378,7 +4772,7 @@ export default function App() {
       )}
 
       {/* ===================================================================== */}
-      {/* ADD MISSING RINK MODAL                                                */}
+      {/* ADD A MISSING RINK MODAL (ALL 50 US STATES + CANADIAN PROVINCES)      */}
       {/* ===================================================================== */}
       {showAddRink && (
         <div
@@ -4386,194 +4780,158 @@ export default function App() {
             setShowAddRink(false);
             popModalHistory();
           }}
-          className="fixed inset-0 z-40 bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-4"
         >
-          <div
+          <form
             onClick={(e) => e.stopPropagation()}
+            onSubmit={handleAddRinkSubmit}
             className={`w-full max-w-md rounded-[30px] p-6 space-y-4 border ${
               isLight
                 ? 'bg-white border-slate-200 shadow-2xl text-slate-900'
-                : 'bg-gradient-to-b from-[#1E2127] to-[#121418] border-white/[0.12] shadow-[0_24px_60px_rgba(0,0,0,0.9),inset_0_1px_0_0_rgba(255,255,255,0.16)] text-zinc-100'
+                : 'bg-gradient-to-b from-[#1E2127] to-[#121418] border-white/[0.12] shadow-2xl text-zinc-100'
             }`}
           >
             <div className="flex items-center justify-between">
               <h3 className={`font-extrabold text-lg ${isLight ? 'text-slate-950' : 'text-white'}`}>
-                Submit a Missing Rink
+                Add a Missing Rink
               </h3>
               <button
+                type="button"
                 onClick={() => {
                   setShowAddRink(false);
                   popModalHistory();
                 }}
                 className={`p-2 rounded-full ${
-                  isLight
-                    ? 'bg-slate-100 text-slate-600 hover:text-slate-950'
-                    : 'bg-[#272B33] text-zinc-300 hover:text-white'
+                  isLight ? 'bg-slate-100 text-slate-600' : 'bg-[#272B33] text-zinc-300'
                 }`}
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <form onSubmit={handleAddRinkSubmit} className="space-y-3.5 text-sm">
-              <div>
-                <label
-                  className={`block text-xs font-bold mb-1.5 ${
-                    isLight ? 'text-slate-600' : 'text-zinc-400'
-                  }`}
-                >
-                  Rink Name *
-                </label>
-                <input
-                  required
-                  type="text"
-                  placeholder="e.g., Mennen Sports Arena"
-                  value={newRink.name}
-                  onChange={(e) => setNewRink({ ...newRink, name: e.target.value })}
-                  className={`w-full border rounded-2xl px-4 py-2.5 focus:outline-none ${
-                    isLight
-                      ? 'bg-slate-50 border-slate-300 focus:border-sky-500 text-slate-950'
-                      : 'bg-[#0F1114] border-white/[0.08] focus:border-cyan-400/50 text-white'
-                  }`}
-                />
-              </div>
-              <div className="grid grid-cols-3 gap-2.5">
-                <div className="col-span-2">
-                  <label
-                    className={`block text-xs font-bold mb-1.5 ${
-                      isLight ? 'text-slate-600' : 'text-zinc-400'
-                    }`}
-                  >
-                    City / Town *
-                  </label>
-                  <input
-                    required
-                    type="text"
-                    placeholder="e.g., Morristown"
-                    value={newRink.city}
-                    onChange={(e) => setNewRink({ ...newRink, city: e.target.value })}
-                    className={`w-full border rounded-2xl px-4 py-2.5 focus:outline-none ${
-                      isLight
-                        ? 'bg-slate-50 border-slate-300 focus:border-sky-500 text-slate-950'
-                        : 'bg-[#0F1114] border-white/[0.08] focus:border-cyan-400/50 text-white'
-                    }`}
-                  />
-                </div>
-                <div>
-                  <label
-                    className={`block text-xs font-bold mb-1.5 ${
-                      isLight ? 'text-slate-600' : 'text-zinc-400'
-                    }`}
-                  >
-                    State *
-                  </label>
-                  <select
-                    required
-                    value={newRink.state}
-                    onChange={(e) => setNewRink({ ...newRink, state: e.target.value })}
-                    className={`w-full border rounded-2xl px-3 py-2.5 focus:outline-none ${
-                      isLight
-                        ? 'bg-slate-50 border-slate-300 focus:border-sky-500 text-slate-950'
-                        : 'bg-[#0F1114] border-white/[0.08] focus:border-cyan-400/50 text-white'
-                    }`}
-                  >
-                    <option value="" disabled>
-                      --
-                    </option>
-                    {US_STATES.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2.5">
-                <div>
-                  <label
-                    className={`block text-xs font-bold mb-1.5 ${
-                      isLight ? 'text-slate-600' : 'text-zinc-400'
-                    }`}
-                  >
-                    Ice Sheets
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={10}
-                    value={newRink.sheets}
-                    onChange={(e) => setNewRink({ ...newRink, sheets: e.target.value })}
-                    className={`w-full border rounded-2xl px-3 py-2.5 focus:outline-none ${
-                      isLight
-                        ? 'bg-slate-50 border-slate-300 focus:border-sky-500 text-slate-950'
-                        : 'bg-[#0F1114] border-white/[0.08] focus:border-cyan-400/50 text-white'
-                    }`}
-                  />
-                </div>
-                <div className="col-span-2">
-                  <label
-                    className={`block text-xs font-bold mb-1.5 ${
-                      isLight ? 'text-slate-600' : 'text-zinc-400'
-                    }`}
-                  >
-                    Parking Lot Size
-                  </label>
-                  <select
-                    value={newRink.parkingSize}
-                    onChange={(e) => setNewRink({ ...newRink, parkingSize: e.target.value })}
-                    className={`w-full border rounded-2xl px-3 py-2.5 focus:outline-none ${
-                      isLight
-                        ? 'bg-slate-50 border-slate-300 focus:border-sky-500 text-slate-950'
-                        : 'bg-[#0F1114] border-white/[0.08] focus:border-cyan-400/50 text-white'
-                    }`}
-                  >
-                    {PARKING_SIZE_OPTIONS.map((sz) => (
-                      <option key={sz} value={sz}>
-                        {sz}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label
-                  className={`block text-xs font-bold mb-1.5 ${
-                    isLight ? 'text-slate-600' : 'text-zinc-400'
-                  }`}
-                >
-                  Quick Notes (Pro shop, coldness, LiveBarn, etc.)
-                </label>
-                <textarea
-                  rows={3}
-                  placeholder="Tell other parents what to expect..."
-                  value={newRink.notes}
-                  onChange={(e) => setNewRink({ ...newRink, notes: e.target.value })}
-                  className={`w-full border rounded-2xl px-4 py-2.5 focus:outline-none ${
-                    isLight
-                      ? 'bg-slate-50 border-slate-300 focus:border-sky-500 text-slate-950'
-                      : 'bg-[#0F1114] border-white/[0.08] focus:border-cyan-400/50 text-white'
-                  }`}
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={submittingRink}
-                className={`w-full font-extrabold py-3 rounded-full shadow-lg transition ${
+            <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
+              Traveling to an arena anywhere in the US or Canada not listed yet? Submit it below.
+            </p>
+            <input
+              required
+              type="text"
+              placeholder="Rink / Arena Name"
+              value={newRink.name}
+              onChange={(e) => setNewRink({ ...newRink, name: e.target.value })}
+              className={`w-full border rounded-2xl px-4 py-2.5 text-sm focus:outline-none ${
+                isLight
+                  ? 'bg-slate-50 border-slate-300 text-slate-950'
+                  : 'bg-[#0F1114] border-white/[0.1] text-white'
+              }`}
+            />
+            <div className="grid grid-cols-3 gap-2">
+              <input
+                required
+                type="text"
+                placeholder="City"
+                value={newRink.city}
+                onChange={(e) => setNewRink({ ...newRink, city: e.target.value })}
+                className={`col-span-2 border rounded-2xl px-4 py-2.5 text-sm focus:outline-none ${
                   isLight
-                    ? 'bg-slate-950 hover:bg-slate-800 text-white'
-                    : 'bg-gradient-to-b from-cyan-300 to-cyan-400 hover:from-cyan-200 hover:to-cyan-300 text-zinc-950'
+                    ? 'bg-slate-50 border-slate-300 text-slate-950'
+                    : 'bg-[#0F1114] border-white/[0.1] text-white'
+                }`}
+              />
+              <select
+                required
+                value={newRink.state}
+                onChange={(e) => {
+                  const code = e.target.value;
+                  const detectedCountry = CA_PROVINCES.includes(code) ? 'CA' : 'US';
+                  setNewRink({ ...newRink, state: code, country: detectedCountry });
+                }}
+                className={`border rounded-2xl px-2.5 py-2.5 text-sm focus:outline-none ${
+                  isLight
+                    ? 'bg-slate-50 border-slate-300 text-slate-950'
+                    : 'bg-[#0F1114] border-white/[0.1] text-white'
                 }`}
               >
-                {submittingRink ? 'Submitting...' : 'Submit Rink for Review'}
-              </button>
-            </form>
-          </div>
+                <option value="">State/Prov</option>
+                <optgroup label="United States">
+                  {US_STATES.map((st) => (
+                    <option key={st} value={st}>
+                      {st}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Canada">
+                  {CA_PROVINCES.map((prov) => (
+                    <option key={prov} value={prov}>
+                      {prov} (CA)
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-2xl border border-transparent bg-black/5 dark:bg-white/5">
+                <label
+                  className={`text-xs font-medium ${isLight ? 'text-slate-600' : 'text-zinc-300'}`}
+                >
+                  Sheets:
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={8}
+                  value={newRink.sheets}
+                  onChange={(e) => setNewRink({ ...newRink, sheets: e.target.value })}
+                  className={`w-14 border rounded-xl px-2 py-1 text-sm text-center ${
+                    isLight
+                      ? 'bg-white border-slate-300 text-slate-950'
+                      : 'bg-[#0F1114] border-white/[0.1] text-white'
+                  }`}
+                />
+              </div>
+
+              <select
+                value={newRink.parkingSize}
+                onChange={(e) => setNewRink({ ...newRink, parkingSize: e.target.value })}
+                className={`border rounded-2xl px-3 py-2 text-xs font-bold focus:outline-none ${
+                  isLight
+                    ? 'bg-slate-50 border-slate-300 text-slate-950'
+                    : 'bg-[#0F1114] border-white/[0.1] text-white'
+                }`}
+              >
+                {PARKING_SIZE_OPTIONS.map((sz) => (
+                  <option key={sz} value={sz}>
+                    {sz}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <textarea
+              rows={3}
+              placeholder="Quick parent notes (cold rink? pro shop? restaurant/bar?)"
+              value={newRink.notes}
+              onChange={(e) => setNewRink({ ...newRink, notes: e.target.value })}
+              className={`w-full border rounded-2xl px-4 py-2.5 text-sm focus:outline-none ${
+                isLight
+                  ? 'bg-slate-50 border-slate-300 text-slate-950'
+                  : 'bg-[#0F1114] border-white/[0.1] text-white'
+              }`}
+            />
+            <button
+              type="submit"
+              disabled={submittingRink}
+              className={`w-full font-extrabold py-3 rounded-full text-sm transition active:scale-[0.99] ${
+                isLight
+                  ? 'bg-slate-950 hover:bg-slate-800 text-white'
+                  : 'bg-gradient-to-b from-cyan-300 to-cyan-400 hover:from-cyan-200 hover:to-cyan-300 text-zinc-950'
+              }`}
+            >
+              {submittingRink ? 'Submitting...' : 'Submit Rink for Verification'}
+            </button>
+          </form>
         </div>
       )}
 
       {/* ===================================================================== */}
-      {/* AFFILIATE DISCLOSURE & LEGAL MODAL                                    */}
+      {/* LEGAL / AFFILIATE DISCLOSURE MODAL                                    */}
       {/* ===================================================================== */}
       {showLegalModal && (
         <div
@@ -4581,14 +4939,14 @@ export default function App() {
             setShowLegalModal(false);
             popModalHistory();
           }}
-          className="fixed inset-0 z-40 bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-4"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className={`w-full max-w-lg rounded-[30px] p-6 space-y-3 text-xs border ${
+            className={`w-full max-w-lg rounded-[30px] p-6 space-y-3 text-xs max-h-[85vh] overflow-y-auto border ${
               isLight
                 ? 'bg-white border-slate-200 shadow-2xl text-slate-600'
-                : 'bg-gradient-to-b from-[#1E2127] to-[#121418] border-white/[0.12] shadow-[0_24px_60px_rgba(0,0,0,0.9),inset_0_1px_0_0_rgba(255,255,255,0.16)] text-zinc-300'
+                : 'bg-gradient-to-b from-[#1E2127] to-[#121418] border-white/[0.12] shadow-2xl text-zinc-300'
             }`}
           >
             <div className="flex items-center justify-between">
@@ -4608,30 +4966,21 @@ export default function App() {
               </button>
             </div>
             <p>
-              <strong className={isLight ? 'text-slate-950' : 'text-white'}>
-                Affiliate Disclosure:
-              </strong>{' '}
-              MyRinkRankings is 100% free for hockey families. To keep the app free, some gear links
-              (such as Amazon, Pure Hockey, or HockeyMonkey) may earn a small commission at zero
-              extra cost to you.
+              <strong>Affiliate Disclosure:</strong> MyRinkRankings participates in retail affiliate
+              programs (including Amazon Associates and hockey gear partners). When you click gear
+              recommendations and make a purchase, we may earn a small commission at no additional
+              cost to you.
             </p>
             <p>
-              <strong className={isLight ? 'text-slate-950' : 'text-white'}>
-                Community Scores:
-              </strong>{' '}
-              Rink scores and live pulse updates reflect crowdsourced parent observations and
-              automatically expire after 3 to 24 hours unless confirmed permanent.
+              <strong>Community Telemetry Disclaimer:</strong> Rink scores, amenity statuses, and
+              facility condition ratings are crowdsourced by hockey parents and rink staff and
+              automatically reset after 3h–24h. Always confirm tournament schedules and pro shop
+              hours directly with the arena.
             </p>
             <p>
-              <strong className={isLight ? 'text-slate-950' : 'text-white'}>
-                Privacy & Contact:
-              </strong>{' '}
-              We do not sell personal user data. Questions or rink verification requests can be sent
-              to{' '}
-              <span className={isLight ? 'text-sky-700 font-semibold' : 'text-cyan-400'}>
-                myrinkrankings@gmail.com
-              </span>
-              .
+              <strong>Privacy Policy:</strong> We do not sell personal data or require user
+              accounts to browse rinks. GPS location is processed locally in your browser to sort
+              nearby rinks and is never stored or tracked on our servers.
             </p>
           </div>
         </div>
