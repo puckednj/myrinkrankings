@@ -1865,7 +1865,7 @@ export default function App() {
                         : 'No Pro Shop / Sharpening'}
                     </span>
 
-                    {/* Facility Condition & Upkeep Score Pill */}
+                    {/* Facility Condition Score Pill */}
                     <span
                       className={`px-3 py-1 rounded-full border ${
                         conditionScore >= 3.8
@@ -1877,7 +1877,7 @@ export default function App() {
                           : 'bg-[#242830] text-zinc-300 border-white/[0.06]'
                       }`}
                     >
-                      ✨ Upkeep {conditionScore.toFixed(1)}/5
+                      ✨ Condition {conditionScore.toFixed(1)}/5
                     </span>
 
                     <span
