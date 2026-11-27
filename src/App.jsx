@@ -4,7 +4,7 @@ import {
   Search, Snowflake, ShoppingBag, Plus, X, Flame,
   ShieldCheck, Eye, Footprints, ExternalLink, Sparkles,
   Mail, MapPin, RefreshCw, CheckCircle2,
-  Radio, Layers, ThermometerSnowflake, AlertCircle, RotateCcw,
+  Radio, Layers, ThermometerSnowflake, ChevronRight,
   Clock, Star, Info, Ban, Lock, ChevronLeft, Users, Tv, Car,
   Sun, Moon, Building2
 } from 'lucide-react';
@@ -379,6 +379,11 @@ export default function App() {
   const [showHoursModal, setShowHoursModal] = useState(false);
   const [activeCategory, setActiveCategory] = useState(null);
 
+  // Live Reports Modal State (Opened via Live Pulses pill)
+  const [showLiveReportsModal, setShowLiveReportsModal] = useState(false);
+  const [liveReportSort, setLiveReportSort] = useState('WATCHED'); // 'WATCHED' | 'NEWEST' | 'IMPACT'
+  const [liveReportCategory, setLiveReportCategory] = useState('ALL');
+
   const [showAddRink, setShowAddRink] = useState(false);
   const [showLegalModal, setShowLegalModal] = useState(false);
 
@@ -395,6 +400,12 @@ export default function App() {
   const [isAdminUnlocked, setIsAdminUnlocked] = useState(false);
   const [adminPhotoRinkId, setAdminPhotoRinkId] = useState('');
   const [uploadingExterior, setUploadingExterior] = useState(false);
+
+  // Founder Admin Sheet & Facility Notes Editor State
+  const [adminNotesRinkId, setAdminNotesRinkId] = useState('');
+  const [adminSheetsCount, setAdminSheetsCount] = useState(1);
+  const [adminSheetNotesText, setAdminSheetNotesText] = useState('');
+  const [savingSheetNotes, setSavingSheetNotes] = useState(false);
 
   // Founder Admin Amenity Hours Editor State
   const [adminHoursRinkId, setAdminHoursRinkId] = useState('');
@@ -438,6 +449,10 @@ export default function App() {
         setDragOffset({ x: 0, y: 0 });
         return;
       }
+      if (showLiveReportsModal) {
+        setShowLiveReportsModal(false);
+        return;
+      }
       if (showAddRink) {
         setShowAddRink(false);
         return;
@@ -453,7 +468,14 @@ export default function App() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [showHoursModal, selectedRink, showAddRink, showLegalModal, showAdminPinModal]);
+  }, [
+    showHoursModal,
+    selectedRink,
+    showLiveReportsModal,
+    showAddRink,
+    showLegalModal,
+    showAdminPinModal,
+  ]);
 
   const pushModalHistory = (name) => {
     try {
@@ -634,6 +656,33 @@ export default function App() {
       })
       .sort((a, b) => b.live_score - a.live_score);
   }, [rinks, stateFilter, quickFilter, searchQuery, watchedIds]);
+
+  // Sorted & Filtered Live Reports for the Live Pulses Drawer
+  const sortedLiveReports = useMemo(() => {
+    return alerts
+      .filter((al) => {
+        if (liveReportCategory === 'ALL') return true;
+        return al.category === liveReportCategory;
+      })
+      .sort((a, b) => {
+        const timeA = new Date(a.created_at || 0).getTime();
+        const timeB = new Date(b.created_at || 0).getTime();
+
+        if (liveReportSort === 'WATCHED') {
+          const aWatched = watchedIds.includes(a.rink_id) ? 1 : 0;
+          const bWatched = watchedIds.includes(b.rink_id) ? 1 : 0;
+          if (bWatched !== aWatched) return bWatched - aWatched;
+          return timeB - timeA;
+        }
+        if (liveReportSort === 'IMPACT') {
+          const aImpact = a.score_impact || 0;
+          const bImpact = b.score_impact || 0;
+          if (aImpact !== bImpact) return aImpact - bImpact; // Negatives (-4, -3, -2) first
+          return timeB - timeA;
+        }
+        return timeB - timeA; // NEWEST
+      });
+  }, [alerts, liveReportCategory, liveReportSort, watchedIds]);
 
   // ============================================================================
   // CROWDSOURCED FACILITY CONDITION & AESTHETICS RATING (1-5 Progressive Blend)
@@ -1047,6 +1096,42 @@ export default function App() {
   };
 
   // ============================================================================
+  // FOUNDER ADMIN: EDIT SHEET COUNT & FACILITY STATUS PILL
+  // ============================================================================
+  const handleSelectAdminNotesRink = (rinkId) => {
+    setAdminNotesRinkId(rinkId);
+    const target = rinks.find((r) => String(r.id) === String(rinkId));
+    setAdminSheetsCount(target?.sheets || 1);
+    setAdminSheetNotesText(target?.sheet_temp_notes || '');
+  };
+
+  const handleAdminSaveSheetNotes = async (e) => {
+    e.preventDefault();
+    if (!adminNotesRinkId || savingSheetNotes) return;
+
+    setSavingSheetNotes(true);
+    try {
+      const { error } = await supabase
+        .from('rinks')
+        .update({
+          sheets: Math.max(1, Number(adminSheetsCount) || 1),
+          sheet_temp_notes: adminSheetNotesText.trim(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', adminNotesRinkId);
+
+      if (error) throw error;
+
+      showToast('Sheet count & facility status pill updated!');
+      await fetchData();
+    } catch (err) {
+      showToast('Could not update sheet notes: ' + err.message);
+    } finally {
+      setSavingSheetNotes(false);
+    }
+  };
+
+  // ============================================================================
   // FOUNDER ADMIN: SAVE RINK & AMENITY HOURS
   // ============================================================================
   const handleSelectAdminHoursRink = (rinkId) => {
@@ -1285,9 +1370,10 @@ export default function App() {
   }, [alerts, selectedRink]);
 
   const openRinkSheet = (rink) => {
-    if (!selectedRink) {
+    if (!selectedRink && !showLiveReportsModal) {
       pushModalHistory('rink');
     }
+    setShowLiveReportsModal(false);
     setSelectedRink(rink);
     setShowHoursModal(false);
     setActiveCategory(null);
@@ -1299,6 +1385,18 @@ export default function App() {
     setShowHoursModal(false);
     setActiveCategory(null);
     setDragOffset({ x: 0, y: 0 });
+    popModalHistory();
+  };
+
+  const openLiveReportsDrawer = () => {
+    setLiveReportSort(watchedIds.length > 0 ? 'WATCHED' : 'NEWEST');
+    setLiveReportCategory('ALL');
+    setShowLiveReportsModal(true);
+    pushModalHistory('liveReports');
+  };
+
+  const closeLiveReportsDrawer = () => {
+    setShowLiveReportsModal(false);
     popModalHistory();
   };
 
@@ -1550,7 +1648,7 @@ export default function App() {
           </div>
         )}
 
-        {/* 2026 Bento Telemetry Header Strip */}
+        {/* 2026 Bento Telemetry Header Strip (Live Pulses is Interactive!) */}
         <div className="grid grid-cols-3 gap-2.5">
           <div
             className={`rounded-[22px] p-3.5 border ${
@@ -1583,20 +1681,46 @@ export default function App() {
             </div>
           </div>
 
-          <div
-            className={`rounded-[22px] p-3.5 border ${
-              isLight
-                ? 'bg-white border-slate-200/90 shadow-sm'
-                : 'bg-gradient-to-b from-[#191C21] to-[#131519] border-white/[0.07] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.09)]'
+          {/* Clickable Live Pulses Telemetry Pill */}
+          <button
+            type="button"
+            onClick={openLiveReportsDrawer}
+            className={`text-left rounded-[22px] p-3.5 border transition-all active:scale-95 group ${
+              alerts.length > 0
+                ? isLight
+                  ? 'bg-gradient-to-b from-amber-50/90 to-white hover:border-amber-400 border-amber-300/90 shadow-sm'
+                  : 'bg-gradient-to-b from-[#231F18] to-[#151412] hover:border-amber-400/50 border-amber-400/30 shadow-[inset_0_1px_0_0_rgba(251,191,36,0.16)]'
+                : isLight
+                ? 'bg-white hover:border-sky-300 border-slate-200/90 shadow-sm'
+                : 'bg-gradient-to-b from-[#191C21] to-[#131519] hover:border-cyan-400/30 border-white/[0.07] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.09)]'
             }`}
           >
-            <div
-              className={`text-[11px] font-bold flex items-center gap-1.5 ${
-                isLight ? 'text-slate-500' : 'text-zinc-400'
-              }`}
-            >
-              <Radio className="w-3.5 h-3.5 text-amber-500" />
-              <span>Live Pulses</span>
+            <div className="flex items-center justify-between gap-1">
+              <div
+                className={`text-[11px] font-bold flex items-center gap-1.5 ${
+                  alerts.length > 0
+                    ? isLight
+                      ? 'text-amber-800'
+                      : 'text-amber-300'
+                    : isLight
+                    ? 'text-slate-500'
+                    : 'text-zinc-400'
+                }`}
+              >
+                <Radio className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <span className="truncate">Live Pulses</span>
+              </div>
+              <ChevronRight
+                className={`w-3.5 h-3.5 shrink-0 transition-transform group-hover:translate-x-0.5 ${
+                  alerts.length > 0
+                    ? isLight
+                      ? 'text-amber-700'
+                      : 'text-amber-300'
+                    : isLight
+                    ? 'text-slate-400'
+                    : 'text-zinc-500'
+                }`}
+              />
             </div>
             <div
               className={`font-mono-score text-xl sm:text-2xl font-extrabold mt-1 ${
@@ -1606,13 +1730,19 @@ export default function App() {
               {alerts.length}
               <span
                 className={`text-xs font-sans font-semibold ml-1.5 ${
-                  isLight ? 'text-slate-400' : 'text-zinc-500'
+                  alerts.length > 0
+                    ? isLight
+                      ? 'text-amber-700'
+                      : 'text-amber-300/90'
+                    : isLight
+                    ? 'text-slate-400'
+                    : 'text-zinc-500'
                 }`}
               >
-                active
+                {alerts.length > 0 ? 'view' : 'active'}
               </span>
             </div>
-          </div>
+          </button>
 
           <div
             className={`rounded-[22px] p-3.5 border ${
@@ -1647,72 +1777,6 @@ export default function App() {
             </div>
           </div>
         </div>
-
-        {/* Live Rink Pulse Ticker */}
-        {alerts.length > 0 && (
-          <div
-            className={`rounded-full px-4 py-2.5 flex items-center gap-3 overflow-x-auto no-scrollbar border ${
-              isLight
-                ? 'bg-gradient-to-r from-amber-50 via-white to-amber-50 border-amber-300/80 shadow-sm'
-                : 'bg-gradient-to-r from-[#1A1C20] via-[#211E1B] to-[#1A1C20] border-amber-400/25 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.8),inset_0_1px_0_0_rgba(251,191,36,0.2)]'
-            }`}
-          >
-            <span
-              className={`shrink-0 inline-flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wider px-3 py-1 rounded-full ${
-                isLight ? 'text-amber-800 bg-amber-200/60' : 'text-amber-300 bg-amber-400/15'
-              }`}
-            >
-              <Flame className="w-3.5 h-3.5" /> Live Pulse
-            </span>
-            <div
-              className={`flex items-center gap-5 text-xs whitespace-nowrap ${
-                isLight ? 'text-slate-700' : 'text-zinc-300'
-              }`}
-            >
-              {alerts.slice(0, 6).map((al) => {
-                const target = rinks.find((r) => r.id === al.rink_id);
-                const meta = parseAlertMeta(al);
-                return (
-                  <button
-                    key={al.id}
-                    onClick={() => target && openRinkSheet(target)}
-                    className={`inline-flex items-center gap-1.5 transition ${
-                      isLight ? 'hover:text-slate-950' : 'hover:text-white'
-                    }`}
-                  >
-                    <strong
-                      className={`font-bold underline ${
-                        isLight
-                          ? 'text-slate-950 decoration-slate-300'
-                          : 'text-white decoration-white/25'
-                      }`}
-                    >
-                      {target ? target.name : 'Rink'}:
-                    </strong>
-                    <span>{meta.cleanLabel}</span>
-                    <span
-                      className={`font-mono-score font-extrabold ${
-                        al.score_impact < 0
-                          ? isLight
-                            ? 'text-rose-600'
-                            : 'text-rose-400'
-                          : al.score_impact > 0
-                          ? isLight
-                            ? 'text-emerald-600'
-                            : 'text-emerald-400'
-                          : isLight
-                          ? 'text-sky-700'
-                          : 'text-sky-300'
-                      }`}
-                    >
-                      ({al.score_impact > 0 ? `+${al.score_impact}` : `${al.score_impact} pts`})
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
         {/* Search & Expressive Pill Controls */}
         <div className="space-y-3">
@@ -2105,6 +2169,244 @@ export default function App() {
           </button>
         </div>
       </footer>
+
+      {/* ===================================================================== */}
+      {/* SORTABLE LIVE PULSES MODAL (Opened by tapping Live Pulses pill)       */}
+      {/* ===================================================================== */}
+      {showLiveReportsModal && (
+        <div
+          onClick={closeLiveReportsDrawer}
+          className="fixed inset-0 z-40 bg-black/75 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className={`w-full max-w-2xl max-h-[88vh] flex flex-col rounded-t-[34px] sm:rounded-[34px] border overflow-hidden ${
+              isLight
+                ? 'bg-[#F8FAFC] border-slate-200 shadow-2xl text-slate-900'
+                : 'bg-gradient-to-b from-[#1E2127] to-[#121418] border-white/[0.12] shadow-2xl text-zinc-100'
+            }`}
+          >
+            {/* Drawer Header */}
+            <div
+              className={`p-5 pb-3.5 border-b space-y-3 shrink-0 ${
+                isLight ? 'border-slate-200 bg-white/80' : 'border-white/[0.08] bg-[#181B20]/80'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Radio className="w-4 h-4 text-amber-500" />
+                    <h3 className={`font-extrabold text-lg ${isLight ? 'text-slate-950' : 'text-white'}`}>
+                      Live Rink Reports
+                    </h3>
+                    <span
+                      className={`font-mono-score text-xs font-extrabold px-2.5 py-0.5 rounded-full ${
+                        isLight
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-amber-400/15 text-amber-300 border border-amber-400/30'
+                      }`}
+                    >
+                      {alerts.length} active
+                    </span>
+                  </div>
+                  <p className={`text-xs mt-0.5 ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
+                    Tap any update to open the rink card · Auto-resets in 3h–24h
+                  </p>
+                </div>
+
+                <button
+                  onClick={closeLiveReportsDrawer}
+                  className={`p-2 rounded-full ${
+                    isLight
+                      ? 'bg-slate-100 text-slate-600 hover:text-slate-950'
+                      : 'bg-[#272B33] text-zinc-300 hover:text-white'
+                  }`}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Sort Controls */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                {[
+                  { id: 'WATCHED', label: '⭐ Watched Rinks First' },
+                  { id: 'NEWEST', label: 'Newest First' },
+                  { id: 'IMPACT', label: 'Issues & Delays First' },
+                ].map((opt) => (
+                  <button
+                    key={opt.id}
+                    onClick={() => setLiveReportSort(opt.id)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-extrabold transition border ${
+                      liveReportSort === opt.id
+                        ? isLight
+                          ? 'bg-slate-950 text-white border-slate-950'
+                          : 'bg-cyan-400 text-zinc-950 border-cyan-400'
+                        : isLight
+                        ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                        : 'bg-[#242830] hover:bg-[#2F3440] text-zinc-300 border-white/[0.08]'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Category Filter Pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5">
+                {[
+                  { id: 'ALL', label: 'All Categories' },
+                  { id: 'Operations', label: 'Schedule & Ops' },
+                  { id: 'Ice', label: 'Ice & Sheet' },
+                  { id: 'Temperature', label: 'Temp & Glass' },
+                  { id: 'Pro Shop', label: 'Pro Shop' },
+                  { id: 'Streaming', label: 'Stream & Clock' },
+                  { id: 'Restrooms', label: 'Restrooms' },
+                ].map((cat) => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setLiveReportCategory(cat.id)}
+                    className={`px-3 py-1 rounded-full text-[11px] font-bold whitespace-nowrap transition border ${
+                      liveReportCategory === cat.id
+                        ? isLight
+                          ? 'bg-sky-600 text-white border-sky-600'
+                          : 'bg-[#2C323D] text-cyan-300 border-cyan-400/40'
+                        : isLight
+                        ? 'bg-white text-slate-600 border-slate-200'
+                        : 'bg-[#14161A] text-zinc-400 border-white/[0.07]'
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Filtered & Sorted Reports List */}
+            <div className="p-4 sm:p-5 overflow-y-auto space-y-2.5 flex-1">
+              {sortedLiveReports.length === 0 ? (
+                <div
+                  className={`rounded-2xl p-8 text-center space-y-1.5 border ${
+                    isLight
+                      ? 'bg-white border-slate-200 text-slate-500'
+                      : 'bg-[#14161A] border-white/[0.07] text-zinc-400'
+                  }`}
+                >
+                  <p className={`font-extrabold text-sm ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                    No active reports in this view
+                  </p>
+                  <p className="text-xs">
+                    All rinks are running at baseline conditions right now.
+                  </p>
+                </div>
+              ) : (
+                sortedLiveReports.map((al) => {
+                  const target = rinks.find((r) => r.id === al.rink_id);
+                  const meta = parseAlertMeta(al);
+                  const isWatched = target && watchedIds.includes(target.id);
+                  const isNeg = al.score_impact < 0;
+                  const isPos = al.score_impact > 0;
+
+                  return (
+                    <div
+                      key={al.id}
+                      onClick={() => target && openRinkSheet(target)}
+                      className={`rounded-2xl p-3.5 border flex items-center justify-between gap-3 cursor-pointer transition active:scale-[0.99] ${
+                        isWatched
+                          ? isLight
+                            ? 'bg-amber-50/70 hover:bg-amber-50 border-amber-300'
+                            : 'bg-[#211E17] hover:bg-[#29251C] border-amber-400/35'
+                          : isLight
+                          ? 'bg-white hover:bg-slate-50 border-slate-200/90 shadow-sm'
+                          : 'bg-[#181B20] hover:bg-[#20242C] border-white/[0.08]'
+                      }`}
+                    >
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span
+                            className={`font-extrabold text-sm truncate ${
+                              isLight ? 'text-slate-950' : 'text-white'
+                            }`}
+                          >
+                            {target ? target.name : 'Rink'}
+                          </span>
+                          {isWatched && (
+                            <span
+                              className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${
+                                isLight
+                                  ? 'bg-amber-200/80 text-amber-900'
+                                  : 'bg-amber-400/20 text-amber-200'
+                              }`}
+                            >
+                              <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
+                              Watching
+                            </span>
+                          )}
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              isLight
+                                ? 'bg-slate-100 text-slate-600'
+                                : 'bg-white/[0.06] text-zinc-400'
+                            }`}
+                          >
+                            {meta.isPermanent ? 'Permanent' : al.category}
+                          </span>
+                        </div>
+
+                        <p
+                          className={`text-xs font-bold ${
+                            isNeg
+                              ? isLight
+                                ? 'text-rose-700'
+                                : 'text-rose-300'
+                              : isPos
+                              ? isLight
+                                ? 'text-emerald-700'
+                                : 'text-emerald-300'
+                              : isLight
+                              ? 'text-sky-800'
+                              : 'text-sky-300'
+                          }`}
+                        >
+                          {meta.cleanLabel}
+                        </p>
+
+                        <p className={`text-[11px] ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
+                          {target ? `${target.city}, ${target.state} · ` : ''}
+                          {formatTimeAgo(al.created_at)}
+                          {meta.confirmations > 1 ? ` · Confirmed by ${meta.confirmations}` : ''}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span
+                          className={`font-mono-score text-xs font-extrabold px-2.5 py-1 rounded-xl border ${
+                            isNeg
+                              ? isLight
+                                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                : 'bg-rose-500/15 text-rose-300 border-rose-400/30'
+                              : isPos
+                              ? isLight
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : 'bg-emerald-500/15 text-emerald-300 border-emerald-400/30'
+                              : isLight
+                              ? 'bg-sky-50 text-sky-700 border-sky-200'
+                              : 'bg-sky-500/15 text-sky-300 border-sky-400/30'
+                          }`}
+                        >
+                          {al.score_impact > 0 ? `+${al.score_impact}` : `${al.score_impact} pts`}
+                        </span>
+                        <ChevronRight
+                          className={`w-4 h-4 ${isLight ? 'text-slate-400' : 'text-zinc-500'}`}
+                        />
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ===================================================================== */}
       {/* 2026 SPATIAL BENTO RINK DETAIL SHEET + WAZE SUBMENU REPORTING         */}
@@ -3026,7 +3328,7 @@ export default function App() {
       )}
 
       {/* ===================================================================== */}
-      {/* FOUNDER ADMIN MODAL (PIN-Protected Photos, Hours, Closures & Queue)   */}
+      {/* FOUNDER ADMIN MODAL (PIN-Protected Notes, Photos, Hours & Queue)      */}
       {/* ===================================================================== */}
       {showAdminPinModal && (
         <div
@@ -3082,8 +3384,8 @@ export default function App() {
                 className="space-y-3 text-sm"
               >
                 <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
-                  Enter your 4-digit Founder PIN to upload exterior photos, edit amenity hours,
-                  review permanent closure flags, and publish newly submitted rinks.
+                  Enter your 4-digit Founder PIN to update sheet status pills, upload exterior photos,
+                  edit amenity hours, review permanent closure flags, and publish newly submitted rinks.
                 </p>
                 <input
                   type="password"
@@ -3111,6 +3413,104 @@ export default function App() {
               </form>
             ) : (
               <div className="space-y-5 text-xs">
+                {/* Edit Sheet Count & Facility Status Pill (e.g. Montclair State) */}
+                <div
+                  className={`space-y-2.5 border rounded-2xl p-3.5 ${
+                    isLight ? 'bg-amber-50/70 border-amber-200' : 'bg-[#0F1114] border-amber-400/25'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <h4
+                      className={`font-extrabold uppercase tracking-wider ${
+                        isLight ? 'text-amber-800' : 'text-amber-300'
+                      }`}
+                    >
+                      Edit Sheet Count & Status Pill
+                    </h4>
+                    <span className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
+                      Top card pill
+                    </span>
+                  </div>
+
+                  <select
+                    value={adminNotesRinkId}
+                    onChange={(e) => handleSelectAdminNotesRink(e.target.value)}
+                    className={`w-full border rounded-xl px-3 py-2 text-xs font-bold focus:outline-none ${
+                      isLight
+                        ? 'bg-white border-slate-300 text-slate-900'
+                        : 'bg-[#181B20] border-white/[0.1] text-white'
+                    }`}
+                  >
+                    <option value="">-- Select a Rink --</option>
+                    {[...rinks]
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name} ({r.sheets} {r.sheets === 1 ? 'Sheet' : 'Sheets'})
+                        </option>
+                      ))}
+                  </select>
+
+                  {adminNotesRinkId && (
+                    <form onSubmit={handleAdminSaveSheetNotes} className="space-y-2 pt-1">
+                      <div>
+                        <label
+                          className={`block text-[11px] font-bold mb-1 ${
+                            isLight ? 'text-slate-600' : 'text-zinc-400'
+                          }`}
+                        >
+                          Active Regulation Sheets
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={10}
+                          value={adminSheetsCount}
+                          onChange={(e) => setAdminSheetsCount(e.target.value)}
+                          className={`w-full border rounded-xl px-3 py-2 text-xs font-bold focus:outline-none ${
+                            isLight
+                              ? 'bg-white border-slate-300 text-slate-900'
+                              : 'bg-[#181B20] border-white/[0.1] text-white'
+                          }`}
+                        />
+                      </div>
+
+                      <div>
+                        <label
+                          className={`block text-[11px] font-bold mb-1 ${
+                            isLight ? 'text-slate-600' : 'text-zinc-400'
+                          }`}
+                        >
+                          Header Sheet Status Pill Text
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g., 2 NHL Sheets (Both Open)"
+                          value={adminSheetNotesText}
+                          onChange={(e) => setAdminSheetNotesText(e.target.value)}
+                          className={`w-full border rounded-xl px-3 py-2 text-xs focus:outline-none ${
+                            isLight
+                              ? 'bg-white border-slate-300 text-slate-900'
+                              : 'bg-[#181B20] border-white/[0.1] text-white'
+                          }`}
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={savingSheetNotes}
+                        className={`w-full py-2.5 px-4 rounded-full font-extrabold text-xs transition ${
+                          isLight
+                            ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                            : 'bg-amber-400 hover:bg-amber-300 text-zinc-950'
+                        }`}
+                      >
+                        {savingSheetNotes ? 'Saving...' : 'Save Sheet Count & Pill'}
+                      </button>
+                    </form>
+                  )}
+                </div>
+
                 {/* Upload / Replace Rink Exterior Photo */}
                 <div
                   className={`space-y-2.5 border rounded-2xl p-3.5 ${
