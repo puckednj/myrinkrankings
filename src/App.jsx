@@ -3632,9 +3632,9 @@ export default function App() {
                 <p>• Monitors: {selectedRink.locker_room_monitors}</p>
               </div>
 
-              {/* Pro Shop, 24/7 Vending & Food + North America Hockey Shop / Sharpening Rescue */}
+              {/* Pro Shop, 24/7 Vending & Food + Compact 1-Line Gear Rescue Pills */}
               <div
-                className={`rounded-[24px] p-4 space-y-2 border ${
+                className={`rounded-[24px] p-4 space-y-1.5 border ${
                   isLight
                     ? 'bg-white border-slate-200 shadow-sm text-slate-700'
                     : 'bg-gradient-to-b from-[#1B1E24] to-[#15171C] border-white/[0.07] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] text-zinc-300'
@@ -3649,9 +3649,9 @@ export default function App() {
                 </div>
                 <p>• Shop: {selectedRink.pro_shop_status}</p>
 
-                {/* Nearby Dedicated Hockey Shop & Nearest Rink Pro Shop Rescue */}
+                {/* Compact 1-Line Pills with Pinned Distance */}
                 {nearbyGearSupport && (
-                  <div className="space-y-1.5 pt-0.5">
+                  <div className="space-y-1.5 py-0.5">
                     {nearbyGearSupport.closestRetailShop && (
                       <a
                         href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
@@ -3663,36 +3663,27 @@ export default function App() {
                         )}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className={`flex items-center justify-between gap-2 px-3 py-2 rounded-2xl border text-[11px] font-extrabold transition active:scale-[0.99] ${
+                        title={`${nearbyGearSupport.closestRetailShop.name} — Skate sharpening & full gear`}
+                        className={`flex items-center justify-between gap-2 px-3 py-1.5 rounded-full border text-[11px] font-extrabold transition active:scale-[0.99] ${
                           isLight
                             ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border-emerald-200'
                             : 'bg-emerald-400/12 hover:bg-emerald-400/20 text-emerald-200 border-emerald-400/30'
                         }`}
                       >
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <Store className="w-3.5 h-3.5 shrink-0 text-emerald-500" />
-                            <span className="truncate">
-                              {nearbyGearSupport.closestRetailShop.name} (
-                              {formatDistance(
-                                nearbyGearSupport.closestRetailShop.milesAway,
-                                nearbyGearSupport.rinkCountry
-                              )}
-                              )
-                            </span>
-                          </div>
-                          <p
-                            className={`text-[10px] font-semibold mt-0.5 truncate ${
-                              isLight ? 'text-emerald-700' : 'text-emerald-300/80'
-                            }`}
-                          >
-                            Skate sharpening & full hockey gear ·{' '}
-                            {nearbyGearSupport.closestRetailShop.city},{' '}
-                            {nearbyGearSupport.closestRetailShop.state}
-                          </p>
-                        </div>
-                        <span className="shrink-0 inline-flex items-center gap-1 underline">
-                          Maps <ExternalLink className="w-3 h-3" />
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <Store className="w-3.5 h-3.5 shrink-0 text-emerald-500" />
+                          <span className="truncate">
+                            {nearbyGearSupport.closestRetailShop.name.replace(/\s+[—-]\s+.*$/, '')}
+                          </span>
+                        </span>
+                        <span className="shrink-0 inline-flex items-center gap-1 font-mono-score">
+                          <span>
+                            {formatDistance(
+                              nearbyGearSupport.closestRetailShop.milesAway,
+                              nearbyGearSupport.rinkCountry
+                            )}
+                          </span>
+                          <ExternalLink className="w-3 h-3 opacity-85" />
                         </span>
                       </a>
                     )}
@@ -3701,25 +3692,29 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => openRinkSheet(nearbyGearSupport.closestRinkShop)}
-                        className={`w-full flex items-center justify-between gap-2 px-3 py-1.5 rounded-2xl border text-left text-[11px] font-bold transition active:scale-[0.99] ${
+                        title={`Nearest Rink Shop: ${nearbyGearSupport.closestRinkShop.name}`}
+                        className={`w-full flex items-center justify-between gap-2 px-3 py-1.5 rounded-full border text-left text-[11px] font-bold transition active:scale-[0.99] ${
                           isLight
                             ? 'bg-sky-50/90 hover:bg-sky-100 text-sky-900 border-sky-200'
                             : 'bg-cyan-400/10 hover:bg-cyan-400/18 text-cyan-200 border-cyan-400/25'
                         }`}
                       >
-                        <span className="truncate">
-                          🏒 Nearest Rink Shop: {nearbyGearSupport.closestRinkShop.name} (
-                          {formatDistance(
-                            nearbyGearSupport.closestRinkShop.milesAway,
-                            nearbyGearSupport.rinkCountry
-                          )}
-                          )
+                        <span className="truncate min-w-0">
+                          🏒 {nearbyGearSupport.closestRinkShop.name}
                         </span>
-                        <ChevronRight className="w-3.5 h-3.5 shrink-0" />
+                        <span className="shrink-0 inline-flex items-center gap-1 font-mono-score font-extrabold">
+                          <span>
+                            {formatDistance(
+                              nearbyGearSupport.closestRinkShop.milesAway,
+                              nearbyGearSupport.rinkCountry
+                            )}
+                          </span>
+                          <ChevronRight className="w-3.5 h-3.5 opacity-85" />
+                        </span>
                       </button>
                     )}
 
-                    {/* Emergency Big-Box Tape/Laces Fallback ONLY when > 15 mi / 25 km from any real hockey shop */}
+                    {/* Emergency 1-Line Big-Box Fallback ONLY when > 15 mi / 25 km from any real hockey shop */}
                     {nearbyGearSupport.showBigBoxTapeFallback && (
                       <div className="space-y-1.5">
                         <a
@@ -3728,38 +3723,34 @@ export default function App() {
                           )}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className={`flex items-center justify-between gap-2 px-3 py-2 rounded-2xl border text-[11px] font-extrabold transition ${
+                          className={`flex items-center justify-between gap-2 px-3 py-1.5 rounded-full border text-[11px] font-extrabold transition ${
                             isLight
                               ? 'bg-sky-50 hover:bg-sky-100 text-sky-900 border-sky-200'
                               : 'bg-cyan-400/10 hover:bg-cyan-400/18 text-cyan-200 border-cyan-400/25'
                           }`}
                         >
-                          <span>
-                            🔍 Search Hockey Pro Shops Near {selectedRink.city}, {selectedRink.state}
+                          <span className="truncate">
+                            🔍 Search Pro Shops Near {selectedRink.city}, {selectedRink.state}
                           </span>
                           <ExternalLink className="w-3.5 h-3.5 shrink-0" />
                         </a>
 
                         <a
-  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-    nearbyGearSupport.bigBoxSearchQuery
-  )}`}
-  target="_blank"
-  rel="noopener noreferrer"
-  title={`${nearbyGearSupport.bigBoxName} (emergency tape/laces only)`}
-  className={`flex items-center justify-between gap-2 px-3 py-1.5 rounded-full border text-[11px] font-extrabold transition ${
-    isLight
-      ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-200'
-      : 'bg-amber-400/10 hover:bg-amber-400/18 text-amber-200 border-amber-400/25'
-  }`}
->
-  <span className="truncate">
-    ⚠️ No Hockey Shop Within {nearbyGearSupport.radiusLabel} — Emergency Tape & Laces
-                            </p>
-                            <p className="text-[10px] opacity-80">
-                              {nearbyGearSupport.bigBoxName} (emergency tape/laces only — no pro gear)
-                            </p>
-                          </div>
+                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                            nearbyGearSupport.bigBoxSearchQuery
+                          )}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={`${nearbyGearSupport.bigBoxName} (emergency tape/laces only)`}
+                          className={`flex items-center justify-between gap-2 px-3 py-1.5 rounded-full border text-[11px] font-extrabold transition ${
+                            isLight
+                              ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-200'
+                              : 'bg-amber-400/10 hover:bg-amber-400/18 text-amber-200 border-amber-400/25'
+                          }`}
+                        >
+                          <span className="truncate">
+                            ⚠️ No Hockey Shop Within {nearbyGearSupport.radiusLabel}
+                          </span>
                           <ExternalLink className="w-3.5 h-3.5 shrink-0" />
                         </a>
                       </div>
@@ -3774,9 +3765,20 @@ export default function App() {
                   </strong>
                 </p>
                 <p>• Food/Bar: {selectedRink.food_options}</p>
-                <p className={`italic pt-0.5 ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
-                  {selectedRink.nearby_fallback_notes}
-                </p>
+                {selectedRink.nearby_fallback_notes && (() => {
+                  const cleanedFoodNote = selectedRink.nearby_fallback_notes
+                    .replace(/^(?:hockeymonkey|monkeysports|pure hockey|pro hockey life|source for sports)[^&]*&\s*/i, '')
+                    .trim();
+                  if (!cleanedFoodNote) return null;
+                  return (
+                    <p className="truncate">
+                      • Nearby:{' '}
+                      <span className={isLight ? 'text-slate-600' : 'text-zinc-300'}>
+                        {cleanedFoodNote.charAt(0).toUpperCase() + cleanedFoodNote.slice(1)}
+                      </span>
+                    </p>
+                  );
+                })()}
               </div>
 
               {/* Floors, Parking Size & Off-Ice */}
