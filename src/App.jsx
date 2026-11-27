@@ -25,6 +25,13 @@ const AFFILIATE_LINKS = {
   powerBank: 'https://www.amazon.com/s?k=portable+charger+power+bank+fast+charging',
 };
 
+const PARKING_SIZE_OPTIONS = [
+  'Small Lot',
+  'Standard Lot',
+  'Large Lot',
+  'Huge Lot + Overflow',
+];
+
 // ============================================================================
 // WAZE-STYLE 6 CATEGORIES + STATE-FLIPPING OPTIONS (3h / 24h Auto-Reset)
 // Options sharing a `stateKey` flip/replace each other instead of stacking logs.
@@ -402,10 +409,11 @@ export default function App() {
   const [adminPhotoRinkId, setAdminPhotoRinkId] = useState('');
   const [uploadingExterior, setUploadingExterior] = useState(false);
 
-  // Founder Admin Sheet & Facility Notes Editor State
+  // Founder Admin Sheet, Parking & Facility Notes Editor State
   const [adminNotesRinkId, setAdminNotesRinkId] = useState('');
   const [adminSheetsCount, setAdminSheetsCount] = useState(1);
   const [adminSheetNotesText, setAdminSheetNotesText] = useState('');
+  const [adminParkingSize, setAdminParkingSize] = useState('Standard Lot');
   const [savingSheetNotes, setSavingSheetNotes] = useState(false);
 
   // Founder Admin Amenity Hours Editor State
@@ -419,7 +427,14 @@ export default function App() {
   const [savingHours, setSavingHours] = useState(false);
 
   // Add Rink Form State
-  const [newRink, setNewRink] = useState({ name: '', city: '', state: 'NJ', sheets: 1, notes: '' });
+  const [newRink, setNewRink] = useState({
+    name: '',
+    city: '',
+    state: 'NJ',
+    sheets: 1,
+    parkingSize: 'Standard Lot',
+    notes: '',
+  });
   const [submittingRink, setSubmittingRink] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
 
@@ -999,6 +1014,8 @@ export default function App() {
     setBusyAction(true);
     try {
       const sheetsCount = Math.max(1, Number(pendingItem.sheets) || 1);
+      const lotSize = pendingItem.parking_lot_size || 'Standard Lot';
+
       const { error: insertErr } = await supabase.from('rinks').insert([
         {
           name: pendingItem.name,
@@ -1027,7 +1044,8 @@ export default function App() {
           locker_room_monitors: 'Lobby Monitor',
           skate_friendly_floors: 'Rubber Matting',
           cleanliness_smell: 'Standard Arena Cleanliness',
-          parking_bag_drop: 'On-Site Lot',
+          parking_lot_size: lotSize,
+          parking_bag_drop: `${lotSize} · On-Site Parking`,
           nearby_fallback_notes: '',
           verification_status: 'Verified by Hockey Parents',
           cold_penalty: 0,
@@ -1098,13 +1116,14 @@ export default function App() {
   };
 
   // ============================================================================
-  // FOUNDER ADMIN: EDIT SHEET COUNT & FACILITY STATUS PILL
+  // FOUNDER ADMIN: EDIT SHEET COUNT, PARKING SIZE & FACILITY STATUS PILL
   // ============================================================================
   const handleSelectAdminNotesRink = (rinkId) => {
     setAdminNotesRinkId(rinkId);
     const target = rinks.find((r) => String(r.id) === String(rinkId));
     setAdminSheetsCount(target?.sheets || 1);
     setAdminSheetNotesText(target?.sheet_temp_notes || '');
+    setAdminParkingSize(target?.parking_lot_size || 'Standard Lot');
   };
 
   const handleAdminSaveSheetNotes = async (e) => {
@@ -1118,16 +1137,17 @@ export default function App() {
         .update({
           sheets: Math.max(1, Number(adminSheetsCount) || 1),
           sheet_temp_notes: adminSheetNotesText.trim(),
+          parking_lot_size: adminParkingSize,
           updated_at: new Date().toISOString(),
         })
         .eq('id', adminNotesRinkId);
 
       if (error) throw error;
 
-      showToast('Sheet count & facility status pill updated!');
+      showToast('Sheet count, parking size & status pill updated!');
       await fetchData();
     } catch (err) {
-      showToast('Could not update sheet notes: ' + err.message);
+      showToast('Could not update facility settings: ' + err.message);
     } finally {
       setSavingSheetNotes(false);
     }
@@ -1214,11 +1234,19 @@ export default function App() {
           city: newRink.city.trim(),
           state: newRink.state,
           sheets: Number(newRink.sheets) || 1,
+          parking_lot_size: newRink.parkingSize || 'Standard Lot',
           submitted_notes: newRink.notes.trim(),
         },
       ]);
       if (error) throw error;
-      setNewRink({ name: '', city: '', state: 'NJ', sheets: 1, notes: '' });
+      setNewRink({
+        name: '',
+        city: '',
+        state: 'NJ',
+        sheets: 1,
+        parkingSize: 'Standard Lot',
+        notes: '',
+      });
       setShowAddRink(false);
       popModalHistory();
       showToast('Rink submitted! Thanks for helping hockey families.');
@@ -3127,6 +3155,7 @@ export default function App() {
                 </p>
               </div>
 
+              {/* Floors, Parking Size & Off-Ice */}
               <div
                 className={`rounded-[24px] p-4 space-y-1.5 border ${
                   isLight
@@ -3149,7 +3178,17 @@ export default function App() {
                     {selectedRink.water_bottle_fillers ? 'Yes' : 'Check Lobby'}
                   </strong>
                 </p>
-                <p>• Drop-Off/Lot: {selectedRink.parking_bag_drop}</p>
+                <p>
+                  • Parking:{' '}
+                  <strong className={isLight ? 'text-slate-950' : 'text-white'}>
+                    {selectedRink.parking_lot_size || 'Standard Lot'}
+                  </strong>
+                  {selectedRink.parking_bag_drop &&
+                  selectedRink.parking_bag_drop.toLowerCase() !==
+                    (selectedRink.parking_lot_size || '').toLowerCase()
+                    ? ` (${selectedRink.parking_bag_drop})`
+                    : ''}
+                </p>
                 <p>• Off-Ice: {selectedRink.off_ice_training}</p>
               </div>
             </div>
@@ -3463,8 +3502,9 @@ export default function App() {
                 className="space-y-3 text-sm"
               >
                 <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
-                  Enter your 4-digit Founder PIN to update sheet status pills, upload exterior photos,
-                  edit amenity hours, review permanent closure flags, and publish newly submitted rinks.
+                  Enter your 4-digit Founder PIN to update sheet status pills, parking sizes, upload
+                  exterior photos, edit amenity hours, review permanent closure flags, and publish
+                  newly submitted rinks.
                 </p>
                 <input
                   type="password"
@@ -3492,7 +3532,7 @@ export default function App() {
               </form>
             ) : (
               <div className="space-y-5 text-xs">
-                {/* Edit Sheet Count & Facility Status Pill (e.g. Montclair State) */}
+                {/* Edit Sheet Count, Parking Size & Facility Status Pill */}
                 <div
                   className={`space-y-2.5 border rounded-2xl p-3.5 ${
                     isLight ? 'bg-amber-50/70 border-amber-200' : 'bg-[#0F1114] border-amber-400/25'
@@ -3504,10 +3544,10 @@ export default function App() {
                         isLight ? 'text-amber-800' : 'text-amber-300'
                       }`}
                     >
-                      Edit Sheet Count & Status Pill
+                      Edit Sheets, Parking & Status Pill
                     </h4>
                     <span className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
-                      Top card pill
+                      Facility specs
                     </span>
                   </div>
 
@@ -3525,33 +3565,60 @@ export default function App() {
                       .sort((a, b) => a.name.localeCompare(b.name))
                       .map((r) => (
                         <option key={r.id} value={r.id}>
-                          {r.name} ({r.sheets} {r.sheets === 1 ? 'Sheet' : 'Sheets'})
+                          {r.name} ({r.sheets} {r.sheets === 1 ? 'Sheet' : 'Sheets'} · {r.parking_lot_size || 'Standard Lot'})
                         </option>
                       ))}
                   </select>
 
                   {adminNotesRinkId && (
                     <form onSubmit={handleAdminSaveSheetNotes} className="space-y-2 pt-1">
-                      <div>
-                        <label
-                          className={`block text-[11px] font-bold mb-1 ${
-                            isLight ? 'text-slate-600' : 'text-zinc-400'
-                          }`}
-                        >
-                          Active Regulation Sheets
-                        </label>
-                        <input
-                          type="number"
-                          min={1}
-                          max={10}
-                          value={adminSheetsCount}
-                          onChange={(e) => setAdminSheetsCount(e.target.value)}
-                          className={`w-full border rounded-xl px-3 py-2 text-xs font-bold focus:outline-none ${
-                            isLight
-                              ? 'bg-white border-slate-300 text-slate-900'
-                              : 'bg-[#181B20] border-white/[0.1] text-white'
-                          }`}
-                        />
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label
+                            className={`block text-[11px] font-bold mb-1 ${
+                              isLight ? 'text-slate-600' : 'text-zinc-400'
+                            }`}
+                          >
+                            Active Regulation Sheets
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={10}
+                            value={adminSheetsCount}
+                            onChange={(e) => setAdminSheetsCount(e.target.value)}
+                            className={`w-full border rounded-xl px-3 py-2 text-xs font-bold focus:outline-none ${
+                              isLight
+                                ? 'bg-white border-slate-300 text-slate-900'
+                                : 'bg-[#181B20] border-white/[0.1] text-white'
+                            }`}
+                          />
+                        </div>
+
+                        <div>
+                          <label
+                            className={`block text-[11px] font-bold mb-1 ${
+                              isLight ? 'text-slate-600' : 'text-zinc-400'
+                            }`}
+                          >
+                            Parking Lot Size
+                          </label>
+                          <select
+                            value={adminParkingSize}
+                            onChange={(e) => setAdminParkingSize(e.target.value)}
+                            className={`w-full border rounded-xl px-3 py-2 text-xs font-bold focus:outline-none ${
+                              isLight
+                                ? 'bg-white border-slate-300 text-slate-900'
+                                : 'bg-[#181B20] border-white/[0.1] text-white'
+                            }`}
+                          >
+                            {PARKING_SIZE_OPTIONS.map((sz) => (
+                              <option key={sz} value={sz}>
+                                {sz}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
 
                       <div>
@@ -3584,7 +3651,7 @@ export default function App() {
                             : 'bg-amber-400 hover:bg-amber-300 text-zinc-950'
                         }`}
                       >
-                        {savingSheetNotes ? 'Saving...' : 'Save Sheet Count & Pill'}
+                        {savingSheetNotes ? 'Saving...' : 'Save Sheets, Parking & Pill'}
                       </button>
                     </form>
                   )}
@@ -3883,7 +3950,8 @@ export default function App() {
                       >
                         <div>
                           <p className={`font-extrabold text-sm ${isLight ? 'text-slate-950' : 'text-white'}`}>
-                            {pr.name} ({pr.city}, {pr.state}) • {pr.sheets || 1} Sheet(s)
+                            {pr.name} ({pr.city}, {pr.state}) • {pr.sheets || 1} Sheet(s) •{' '}
+                            {pr.parking_lot_size || 'Standard Lot'}
                           </p>
                           {pr.submitted_notes && (
                             <p className={`mt-1 ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
@@ -4014,6 +4082,55 @@ export default function App() {
                   </select>
                 </div>
               </div>
+
+              <div className="grid grid-cols-3 gap-2.5">
+                <div>
+                  <label
+                    className={`block text-xs font-bold mb-1.5 ${
+                      isLight ? 'text-slate-600' : 'text-zinc-400'
+                    }`}
+                  >
+                    Ice Sheets
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={newRink.sheets}
+                    onChange={(e) => setNewRink({ ...newRink, sheets: e.target.value })}
+                    className={`w-full border rounded-2xl px-3 py-2.5 focus:outline-none ${
+                      isLight
+                        ? 'bg-slate-50 border-slate-300 focus:border-sky-500 text-slate-950'
+                        : 'bg-[#0F1114] border-white/[0.08] focus:border-cyan-400/50 text-white'
+                    }`}
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label
+                    className={`block text-xs font-bold mb-1.5 ${
+                      isLight ? 'text-slate-600' : 'text-zinc-400'
+                    }`}
+                  >
+                    Parking Lot Size
+                  </label>
+                  <select
+                    value={newRink.parkingSize}
+                    onChange={(e) => setNewRink({ ...newRink, parkingSize: e.target.value })}
+                    className={`w-full border rounded-2xl px-3 py-2.5 focus:outline-none ${
+                      isLight
+                        ? 'bg-slate-50 border-slate-300 focus:border-sky-500 text-slate-950'
+                        : 'bg-[#0F1114] border-white/[0.08] focus:border-cyan-400/50 text-white'
+                    }`}
+                  >
+                    {PARKING_SIZE_OPTIONS.map((sz) => (
+                      <option key={sz} value={sz}>
+                        {sz}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
               <div>
                 <label
                   className={`block text-xs font-bold mb-1.5 ${
