@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { supabase } from './supabaseClient';
 import {
   Search, Snowflake, ShoppingBag, Plus, X, Flame,
@@ -238,9 +238,6 @@ function formatMainCardSheets(rink) {
     const miniLabel = `${miniCount} ${miniCount === 1 ? 'Mini Rink' : 'Mini Rinks'}`;
     return `${regLabel} + ${miniLabel} (${total} Total)`;
   }
-  if (notes.includes('roller rink')) {
-    return `${regLabel} + 1 Roller Rink`;
-  }
   return regLabel;
 }
 
@@ -366,6 +363,13 @@ export default function App() {
   const [showAddRink, setShowAddRink] = useState(false);
   const [showLegalModal, setShowLegalModal] = useState(false);
 
+  // Mobile Gesture & History Back-Button State (prevents edge-swipe from closing the app)
+  const rinkSheetRef = useRef(null);
+  const touchStartRef = useRef({ x: 0, y: 0, scrollTop: 0, time: 0 });
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const historyDepthRef = useRef(0);
+  const ignoringPopRef = useRef(false);
+
   // Founder Admin Modal State
   const [showAdminPinModal, setShowAdminPinModal] = useState(false);
   const [adminPinInput, setAdminPinInput] = useState('');
@@ -391,6 +395,66 @@ export default function App() {
   const showToast = (msg) => {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(''), 4000);
+  };
+
+  // Intercept mobile phone edge-swipe / hardware Back button so it closes modals instead of leaving the app
+  useEffect(() => {
+    const handlePopState = () => {
+      if (ignoringPopRef.current) {
+        ignoringPopRef.current = false;
+        return;
+      }
+
+      if (historyDepthRef.current > 0) {
+        historyDepthRef.current -= 1;
+      }
+
+      if (showHoursModal) {
+        setShowHoursModal(false);
+        return;
+      }
+      if (selectedRink) {
+        setSelectedRink(null);
+        setActiveCategory(null);
+        setDragOffset({ x: 0, y: 0 });
+        return;
+      }
+      if (showAddRink) {
+        setShowAddRink(false);
+        return;
+      }
+      if (showLegalModal) {
+        setShowLegalModal(false);
+        return;
+      }
+      if (showAdminPinModal) {
+        setShowAdminPinModal(false);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [showHoursModal, selectedRink, showAddRink, showLegalModal, showAdminPinModal]);
+
+  const pushModalHistory = (name) => {
+    try {
+      window.history.pushState({ mrrModal: name }, '');
+      historyDepthRef.current += 1;
+    } catch {
+      // ignore history errors
+    }
+  };
+
+  const popModalHistory = () => {
+    if (historyDepthRef.current > 0) {
+      historyDepthRef.current -= 1;
+      ignoringPopRef.current = true;
+      try {
+        window.history.back();
+      } catch {
+        ignoringPopRef.current = false;
+      }
+    }
   };
 
   const toggleWatchRink = (e, rink) => {
@@ -1054,6 +1118,7 @@ export default function App() {
       if (error) throw error;
       setNewRink({ name: '', city: '', state: 'NJ', sheets: 1, notes: '' });
       setShowAddRink(false);
+      popModalHistory();
       showToast('Rink submitted! Thanks for helping hockey families.');
     } catch (err) {
       showToast('Could not submit rink: ' + err.message);
@@ -1205,11 +1270,73 @@ export default function App() {
   }, [alerts, selectedRink]);
 
   const openRinkSheet = (rink) => {
+    if (!selectedRink) {
+      pushModalHistory('rink');
+    }
     setSelectedRink(rink);
     setShowHoursModal(false);
     setActiveCategory(null);
     setStaffPinPromptAlertId(null);
     setStaffPinInput('');
+    setDragOffset({ x: 0, y: 0 });
+  };
+
+  const closeRinkSheet = () => {
+    setSelectedRink(null);
+    setShowHoursModal(false);
+    setActiveCategory(null);
+    setDragOffset({ x: 0, y: 0 });
+    popModalHistory();
+  };
+
+  const openHoursPopup = () => {
+    setShowHoursModal(true);
+    pushModalHistory('hours');
+  };
+
+  const closeHoursPopup = () => {
+    setShowHoursModal(false);
+    popModalHistory();
+  };
+
+  // Direct touch swipe-down or swipe-right on the individual rink card
+  const handleCardTouchStart = (e) => {
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0];
+    touchStartRef.current = {
+      x: t.clientX,
+      y: t.clientY,
+      scrollTop: rinkSheetRef.current ? rinkSheetRef.current.scrollTop : 0,
+      time: Date.now(),
+    };
+  };
+
+  const handleCardTouchMove = (e) => {
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0];
+    const dx = t.clientX - touchStartRef.current.x;
+    const dy = t.clientY - touchStartRef.current.y;
+    const currentScroll = rinkSheetRef.current ? rinkSheetRef.current.scrollTop : 0;
+
+    // Horizontal swipe right to return to home page
+    if (dx > 18 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+      setDragOffset({ x: Math.min(dx, 260), y: 0 });
+      return;
+    }
+
+    // Vertical pull down when scrolled to the very top of the card
+    if (touchStartRef.current.scrollTop <= 2 && currentScroll <= 2 && dy > 14 && dy > Math.abs(dx) * 1.2) {
+      setDragOffset({ x: 0, y: Math.min(dy, 280) });
+    }
+  };
+
+  const handleCardTouchEnd = () => {
+    const { x, y } = dragOffset;
+    if (x > 95 || y > 95) {
+      closeRinkSheet();
+    } else {
+      setDragOffset({ x: 0, y: 0 });
+    }
   };
 
   return (
@@ -1315,7 +1442,10 @@ export default function App() {
             </button>
 
             <button
-              onClick={() => setShowAddRink(true)}
+              onClick={() => {
+                setShowAddRink(true);
+                pushModalHistory('addRink');
+              }}
               className={`flex items-center gap-1.5 font-extrabold text-xs px-4 py-2.5 rounded-full transition-all active:scale-95 ${
                 isLight
                   ? 'bg-slate-950 hover:bg-slate-800 text-white shadow-md'
@@ -1934,7 +2064,10 @@ export default function App() {
             <Mail className="w-3.5 h-3.5" /> Rink Owner / Partner Contact
           </a>
           <button
-            onClick={() => setShowLegalModal(true)}
+            onClick={() => {
+              setShowLegalModal(true);
+              pushModalHistory('legal');
+            }}
             className={`underline font-medium ${
               isLight ? 'text-slate-500 hover:text-slate-900' : 'text-zinc-400 hover:text-white'
             }`}
@@ -1946,9 +2079,11 @@ export default function App() {
               if (isAdminUnlocked) {
                 fetchPendingRinks();
                 setShowAdminPinModal(true);
+                pushModalHistory('admin');
               } else {
                 setAdminPinInput('');
                 setShowAdminPinModal(true);
+                pushModalHistory('admin');
               }
             }}
             className={`inline-flex items-center gap-1 font-medium transition ${
@@ -1965,11 +2100,22 @@ export default function App() {
       {/* ===================================================================== */}
       {selectedRink && (
         <div
-          onClick={() => setSelectedRink(null)}
+          onClick={closeRinkSheet}
           className="fixed inset-0 z-40 bg-black/75 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4"
         >
           <div
+            ref={rinkSheetRef}
             onClick={(e) => e.stopPropagation()}
+            onTouchStart={handleCardTouchStart}
+            onTouchMove={handleCardTouchMove}
+            onTouchEnd={handleCardTouchEnd}
+            style={{
+              transform:
+                dragOffset.x || dragOffset.y
+                  ? `translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0)`
+                  : undefined,
+              transition: dragOffset.x || dragOffset.y ? 'none' : 'transform 0.2s ease-out',
+            }}
             className={`w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-t-[34px] sm:rounded-[34px] p-5 sm:p-6 space-y-5 border ${
               isLight
                 ? 'bg-[#F8FAFC] border-slate-200 shadow-2xl text-slate-900'
@@ -2049,7 +2195,7 @@ export default function App() {
                     <span className="text-xs font-bold opacity-70">/100</span>
                   </div>
                   <button
-                    onClick={() => setSelectedRink(null)}
+                    onClick={closeRinkSheet}
                     className={`p-2.5 rounded-full transition ${
                       isLight
                         ? 'bg-slate-200/80 hover:bg-slate-300 text-slate-800'
@@ -2061,7 +2207,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Sheet Pill + Right-Justified Hours Pill */}
+              {/* Sheet Pill + Right-Justified Hours Pill (Always Same Row) */}
               <div className="flex items-center justify-between gap-2 pt-0.5">
                 {selectedRink.sheet_temp_notes ? (
                   <p
@@ -2079,7 +2225,7 @@ export default function App() {
                 )}
 
                 <button
-                  onClick={() => setShowHoursModal(true)}
+                  onClick={openHoursPopup}
                   className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-extrabold border transition active:scale-95 ${
                     hasAnyHours(selectedRink)
                       ? isLight
@@ -2844,7 +2990,7 @@ export default function App() {
       {/* ===================================================================== */}
       {selectedRink && showHoursModal && (
         <div
-          onClick={() => setShowHoursModal(false)}
+          onClick={closeHoursPopup}
           className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
         >
           <div
@@ -2873,7 +3019,7 @@ export default function App() {
                 </h3>
               </div>
               <button
-                onClick={() => setShowHoursModal(false)}
+                onClick={closeHoursPopup}
                 className={`p-2 rounded-full ${
                   isLight
                     ? 'bg-slate-100 text-slate-600 hover:text-slate-950'
@@ -2982,7 +3128,7 @@ export default function App() {
                 <span>Submit / Update Hours</span>
               </a>
               <button
-                onClick={() => setShowHoursModal(false)}
+                onClick={closeHoursPopup}
                 className={`px-4 py-2.5 rounded-full font-bold text-xs ${
                   isLight
                     ? 'bg-slate-100 hover:bg-slate-200 text-slate-800'
@@ -3001,7 +3147,10 @@ export default function App() {
       {/* ===================================================================== */}
       {showAdminPinModal && (
         <div
-          onClick={() => setShowAdminPinModal(false)}
+          onClick={() => {
+            setShowAdminPinModal(false);
+            popModalHistory();
+          }}
           className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
         >
           <div
@@ -3022,7 +3171,10 @@ export default function App() {
                 Admin Panel
               </h3>
               <button
-                onClick={() => setShowAdminPinModal(false)}
+                onClick={() => {
+                  setShowAdminPinModal(false);
+                  popModalHistory();
+                }}
                 className={`p-2 rounded-full ${
                   isLight
                     ? 'bg-slate-100 text-slate-600 hover:text-slate-950'
@@ -3399,7 +3551,10 @@ export default function App() {
       {/* ===================================================================== */}
       {showAddRink && (
         <div
-          onClick={() => setShowAddRink(false)}
+          onClick={() => {
+            setShowAddRink(false);
+            popModalHistory();
+          }}
           className="fixed inset-0 z-40 bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
         >
           <div
@@ -3415,7 +3570,10 @@ export default function App() {
                 Submit a Missing Rink
               </h3>
               <button
-                onClick={() => setShowAddRink(false)}
+                onClick={() => {
+                  setShowAddRink(false);
+                  popModalHistory();
+                }}
                 className={`p-2 rounded-full ${
                   isLight
                     ? 'bg-slate-100 text-slate-600 hover:text-slate-950'
@@ -3535,7 +3693,10 @@ export default function App() {
       {/* ===================================================================== */}
       {showLegalModal && (
         <div
-          onClick={() => setShowLegalModal(false)}
+          onClick={() => {
+            setShowLegalModal(false);
+            popModalHistory();
+          }}
           className="fixed inset-0 z-40 bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
         >
           <div
@@ -3551,7 +3712,10 @@ export default function App() {
                 Affiliate Disclosure, Terms & Privacy
               </h3>
               <button
-                onClick={() => setShowLegalModal(false)}
+                onClick={() => {
+                  setShowLegalModal(false);
+                  popModalHistory();
+                }}
                 className={`p-2 rounded-full ${
                   isLight ? 'bg-slate-100 text-slate-600' : 'bg-[#272B33] text-zinc-300'
                 }`}
