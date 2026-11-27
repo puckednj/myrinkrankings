@@ -4036,7 +4036,7 @@ export default function App() {
                 <input
                   required
                   type="text"
-                  placeholder="e.g., Floyd Hall Arena"
+                  placeholder="e.g., Ice House of New Jersey"
                   value={newRink.name}
                   onChange={(e) => setNewRink({ ...newRink, name: e.target.value })}
                   className={`w-full border rounded-2xl px-4 py-2.5 focus:outline-none ${
@@ -4058,7 +4058,7 @@ export default function App() {
                   <input
                     required
                     type="text"
-                    placeholder="e.g., Little Falls"
+                    placeholder="e.g., Hackensack"
                     value={newRink.city}
                     onChange={(e) => setNewRink({ ...newRink, city: e.target.value })}
                     className={`w-full border rounded-2xl px-4 py-2.5 focus:outline-none ${
